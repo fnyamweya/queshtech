@@ -1,0 +1,6 @@
+name = "qtech-web"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[vars]
+# Add environment variables here for Pages functions or client-side config

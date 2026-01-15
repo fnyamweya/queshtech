@@ -3,20 +3,13 @@ services:
     build:
       context: .
       target: development
-    command: npm run start:dev
+    command: npm -w apps/api run start:dev
     ports:
       - "8090:8090"
     env_file:
-      - .env
+      - apps/api/.env.docker.example
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: qtech_db
       NODE_ENV: development
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
     volumes:
       - .:/app
       - /app/node_modules
