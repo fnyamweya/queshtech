@@ -50,7 +50,6 @@ export interface AvailabilityDTO {
     quantity?: number;
   };
   schedule?: {
-    timezone: string;
     windows: Array<{ from: string; to: string }>;
   };
   meta?: Record<string, unknown>;

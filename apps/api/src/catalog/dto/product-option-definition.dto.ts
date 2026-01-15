@@ -34,4 +34,13 @@ export class ProductOptionDefinitionDto {
   @IsOptional()
   @IsBoolean()
   required?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional UI hint for how this option should be rendered in clients (e.g. select, radio, color_swatch). Stored as metadata only.',
+    example: 'color_swatch',
+  })
+  @IsOptional()
+  @IsString()
+  componentType?: string;
 }

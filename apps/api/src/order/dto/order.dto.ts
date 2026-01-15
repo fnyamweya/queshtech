@@ -3,7 +3,7 @@ import { OrderItemDto } from './order-item.dto';
 import { OrderLevelChargeDto } from './order-level-charge.dto';
 import { DerivedOrderPaymentStatus } from '../../order-payment/order-payment.types';
 
-class OrderPaymentSummaryDto {
+class OrderPaymentSummaryInlineDto {
   @ApiProperty({ example: '100000.0000' })
   capturedTotal: string;
 
@@ -142,7 +142,7 @@ export class OrderDto {
   orderLevelCharges?: OrderLevelChargeDto[];
 
   @ApiPropertyOptional({
-    type: () => OrderPaymentSummaryDto,
+    type: () => OrderPaymentSummaryInlineDto,
     example: {
       capturedTotal: '0.0000',
       adjustedTotal: '0.0000',
@@ -153,5 +153,5 @@ export class OrderDto {
     },
     description: 'Derived from successful payment allocations; no DB field.',
   })
-  paymentSummary?: OrderPaymentSummaryDto;
+  paymentSummary?: OrderPaymentSummaryInlineDto;
 }

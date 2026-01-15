@@ -39,7 +39,6 @@ export class PublicProductSkuDto {
       schedule: {
         startAt: '2025-01-01T00:00:00Z',
         endAt: '2026-01-01T00:00:00Z',
-        timezone: 'UTC',
       },
     },
   })

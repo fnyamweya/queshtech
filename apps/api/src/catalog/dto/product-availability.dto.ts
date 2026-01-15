@@ -40,11 +40,6 @@ export class ProductAvailabilityScheduleDto {
   @IsOptional()
   @IsString()
   endAt?: string;
-
-  @ApiPropertyOptional({ description: 'Timezone identifier', example: 'UTC' })
-  @IsOptional()
-  @IsString()
-  timezone?: string;
 }
 
 export class ProductAvailabilityDto {

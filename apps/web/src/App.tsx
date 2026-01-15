@@ -94,7 +94,7 @@ function App() {
             <Route path="/axis/login">
               <AdminLoginPage />
             </Route>
-            <Route path="/axis/auth/google/callback">
+            <Route path="/axis/oauth/google/callback">
               <AdminGoogleAuthCallbackPage />
             </Route>
             <Route path="/axis/password-set/:token?">
@@ -245,9 +245,6 @@ function App() {
                   <CategoryPage onAddToCart={addToCart} />
                 </Route>
                 <Route path="/product/:slug">
-                    <Route path="/auth/google/callback">
-                      <GoogleOAuthCallbackPage />
-                    </Route>
                   <ProductDetailPage onAddToCart={addToCart} />
                 </Route>
                 <Route path="/cart">
@@ -272,6 +269,9 @@ function App() {
                 </Route>
                 <Route path="/signup">
                   <SignupPage />
+                </Route>
+                <Route path="/oauth/google/callback">
+                  <GoogleOAuthCallbackPage />
                 </Route>
                 <Route path="/forgot-password/:step?">
                   <ForgotPasswordPage />

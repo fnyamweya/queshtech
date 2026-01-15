@@ -135,7 +135,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
     // Spec: redirect must be a RELATIVE UI path (backend will reject absolute URLs).
     // Backend will redirect back to this route with ?exchangeCode=...
-    const redirectPath = '/auth/google/callback'
+    const redirectPath = '/axis/oauth/google/callback'
 
     const build = (base: string) => `${base}?redirect=${encodeURIComponent(redirectPath)}`
 

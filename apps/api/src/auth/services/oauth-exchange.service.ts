@@ -4,6 +4,7 @@ import { AppCacheService } from 'src/common/cache/app-cache.service';
 
 type OAuthExchangePayload = {
   userId: string;
+  oauthKey: string;
   createdAt: number;
 };
 
@@ -18,10 +19,11 @@ export class OAuthExchangeService {
     return `${this.prefix}${exchangeCode}`;
   }
 
-  issue(userId: string): Promise<string> {
+  issue(userId: string, oauthKey: string): Promise<string> {
     const exchangeCode = crypto.randomBytes(32).toString('base64url');
     const payload: OAuthExchangePayload = {
       userId,
+      oauthKey,
       createdAt: Date.now(),
     };
 

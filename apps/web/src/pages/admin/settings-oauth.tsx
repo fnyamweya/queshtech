@@ -29,10 +29,6 @@ type GoogleOAuthProfileDto = {
   hasClientSecret?: boolean
 }
 
-type GoogleOAuthSecretResponseDto = {
-  hasClientSecret: boolean
-}
-
 type AppleOAuthConfigDto = {
   clientId?: string
   teamId?: string
@@ -109,6 +105,23 @@ function normalizeDomain(value: string) {
   return trimmed
 }
 
+function getOAuthCallbackOrigin() {
+  // OAuth callback URLs must point to the API host (NOT the /api/v1 base path).
+  // - In local dev, API is proxied through Vite, so same-origin works.
+  // - In split-host deployments, VITE_API_BASE_URL is typically absolute; use its origin.
+  const apiBase = getApiBaseUrl()
+  if (apiBase && /^https?:\/\//i.test(apiBase)) {
+    try {
+      return new URL(apiBase).origin
+    } catch {
+      // fall through
+    }
+  }
+
+  if (typeof window !== 'undefined') return window.location.origin
+  return ''
+}
+
 export function AdminSettingsOAuthPage() {
   const { accessToken, authorizedRequest } = useAdminAuth()
   const api = useMemo(() => createApiClient({ token: accessToken }), [accessToken])
@@ -119,11 +132,9 @@ export function AdminSettingsOAuthPage() {
     const callbackPathTemplate = '/auth/<key>/google/callback'
     if (typeof window === 'undefined') return callbackPathTemplate
 
-    // Callback URL is a BACKEND route and must match Google Console redirect URI.
-    // Prefer configured API base URL when present.
-    const apiBase = getApiBaseUrl()
-    const origin = (apiBase || window.location.origin).replace(/\/$/, '')
-    return `${origin}${callbackPathTemplate}`
+    // Callback URL is a BACKEND route and must match the Google Console redirect URI.
+    const origin = getOAuthCallbackOrigin().replace(/\/$/, '')
+    return origin ? `${origin}${callbackPathTemplate}` : callbackPathTemplate
   }, [])
 
   const [isLoading, setIsLoading] = useState(false)
@@ -151,9 +162,10 @@ export function AdminSettingsOAuthPage() {
   const axisGoogleCallbackRecommendedHint = useMemo(() => {
     const key = googleKey.trim()
     if (!key) return axisGoogleCallbackBaseHint
-    const apiBase = getApiBaseUrl()
-    const origin = (apiBase || (typeof window === 'undefined' ? '' : window.location.origin)).replace(/\/$/, '')
-    return `${origin}${API_PREFIX}/auth/${encodeURIComponent(key)}/google/callback`
+
+    const origin = getOAuthCallbackOrigin().replace(/\/$/, '')
+    if (!origin) return `/auth/${encodeURIComponent(key)}/google/callback`
+    return `${origin}/auth/${encodeURIComponent(key)}/google/callback`
   }, [axisGoogleCallbackBaseHint, googleKey])
 
   // Apple (non-secret)
@@ -269,22 +281,22 @@ export function AdminSettingsOAuthPage() {
     void load()
   }, [accessToken])
 
-  const validateAxisGoogleCallbackUrl = (callbackUrl: string) => {
+  const validateGoogleCallbackUrl = (callbackUrl: string) => {
     const key = googleKey.trim()
-    const requiredPath = `${API_PREFIX}/auth/${key}/google/callback`
+    const requiredPath = `/auth/${key}/google/callback`
     const expectedFull = axisGoogleCallbackRecommendedHint
     try {
       const asUrl = callbackUrl.startsWith('http') ? new URL(callbackUrl) : new URL(callbackUrl, window.location.origin)
-      if (!key || !asUrl.pathname.startsWith(requiredPath)) {
+      if (!key || asUrl.pathname !== requiredPath) {
         toast.error('Invalid Google callback URL', {
-          description: `Use ${expectedFull} to ensure the user returns to Axis after sign-in.`,
+          description: `Use ${expectedFull} (this must match the Google Console redirect URI).`,
         })
         return false
       }
       return true
     } catch {
       toast.error('Invalid Google callback URL', {
-        description: `Use ${expectedFull} to ensure the user returns to Axis after sign-in.`,
+        description: `Use ${expectedFull} (this must match the Google Console redirect URI).`,
       })
       return false
     }
@@ -314,7 +326,14 @@ export function AdminSettingsOAuthPage() {
       toast.error('Google callback URL is required')
       return
     }
-    if (!validateAxisGoogleCallbackUrl(callbackUrl)) return
+    if (!validateGoogleCallbackUrl(callbackUrl)) return
+
+    if (!allowedRoleIds.length) {
+      toast.error('Select at least one allowed role', {
+        description: 'This is required so the API can decide whether this profile is for Axis (admin) or Storefront (customer).',
+      })
+      return
+    }
 
     setIsSavingGoogleProfile(true)
     try {
@@ -364,10 +383,7 @@ export function AdminSettingsOAuthPage() {
 
     setIsSavingGoogleSecret(true)
     try {
-      const resp = await api.post<GoogleOAuthSecretResponseDto>(
-        endpoints.settings.oauthGoogleProfileSecret(selectedGoogleProfileId),
-        { clientSecret }
-      )
+      await api.post<GoogleOAuthProfileDto>(endpoints.settings.oauthGoogleProfileSecret(selectedGoogleProfileId), { clientSecret })
       setGoogleClientSecret('')
       toast.success('Google OAuth secret updated')
       // Reload to refresh hasClientSecret per profile.
@@ -543,7 +559,7 @@ export function AdminSettingsOAuthPage() {
                                   <div className="truncate font-medium">{p?.name || 'Unnamed'}</div>
                                   {p?.key ? <div className="mt-0.5 text-xs text-muted-foreground">Key: {p.key}</div> : null}
                                   <div className="mt-1 text-xs text-muted-foreground">
-                                    {roleCount === 0 ? 'All roles' : `${roleCount} role${roleCount === 1 ? '' : 's'}`} •{' '}
+                                    {roleCount === 0 ? 'No roles (blocked)' : `${roleCount} role${roleCount === 1 ? '' : 's'}`} •{' '}
                                     {domainCount === 0 ? 'All domains' : `${domainCount} domain${domainCount === 1 ? '' : 's'}`}
                                   </div>
                                 </div>
@@ -608,13 +624,16 @@ export function AdminSettingsOAuthPage() {
                       placeholder={axisGoogleCallbackBaseHint}
                     />
                     <div className="text-xs text-muted-foreground">Recommended: {axisGoogleCallbackRecommendedHint}</div>
+                    <div className="text-xs text-muted-foreground">
+                      This must be the backend route <span className="font-mono">/auth/&lt;key&gt;/google/callback</span> (do not include <span className="font-mono">/api/v1</span>).
+                    </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label>Allowed roles</Label>
                     <div className="flex flex-wrap gap-2">
                       {selectedRoles.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">All roles allowed.</div>
+                        <div className="text-sm text-muted-foreground">Select at least one role (required).</div>
                       ) : (
                         selectedRoles.map((r) => (
                           <Badge key={r.id} variant="secondary" className="flex items-center gap-1">

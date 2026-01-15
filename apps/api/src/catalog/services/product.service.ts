@@ -81,7 +81,6 @@ interface AvailabilityNormalized {
   schedule: {
     startAt?: string;
     endAt?: string;
-    timezone?: string;
   };
   meta?: Record<string, unknown>;
 }
@@ -1138,7 +1137,6 @@ export class ProductService {
       schedule: {
         startAt: input?.schedule?.startAt,
         endAt: input?.schedule?.endAt,
-        timezone: input?.schedule?.timezone ?? 'UTC',
       },
       meta: input?.meta ?? {},
     };

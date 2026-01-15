@@ -6,4 +6,13 @@ export class OAuthExchangeDto {
   @IsString()
   @IsNotEmpty()
   exchangeCode: string;
+
+  @ApiProperty({
+    description:
+      'The Google OAuth profile key/id used to initiate the OAuth flow. Exchange codes are bound to this value.',
+    example: 'axis',
+  })
+  @IsString()
+  @IsNotEmpty()
+  oauthKey: string;
 }

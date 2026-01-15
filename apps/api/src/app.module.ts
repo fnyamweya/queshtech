@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { existsSync } from 'fs';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UserModule } from './user/user.module';
@@ -36,11 +37,15 @@ import { OrderFulfillmentModule } from './order-fulfillment/order-fulfillment.mo
 import { OrderEventsModule } from './order-events/order-events.module';
 import { AccountingModule } from './accounting/accounting.module';
 
+const envFilePath = existsSync(`${process.cwd()}/.env.local`) ? '.env.local' : '.env';
+
 @Module({
   imports: [
     CommonModule,
     ConfigModule.forRoot({
       isGlobal: true,
+      // Use `.env.local` when present (per-developer overrides), otherwise fall back to `.env`.
+      envFilePath,
     }),
     TypeOrmModule.forRoot({
       ...dataSource.options,

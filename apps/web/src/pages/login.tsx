@@ -91,7 +91,7 @@ export function LoginPage() {
 
     if (result.success) {
       // OAuth initiation triggers a full-page redirect to the backend.
-      // The final redirect is handled by /auth/google/callback after exchange.
+      // The final redirect is handled by /oauth/google/callback after exchange.
       toast.success('Continuing with Google…')
     } else {
       toast.error('Google sign in failed', {

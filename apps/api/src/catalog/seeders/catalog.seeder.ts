@@ -227,7 +227,6 @@ export class CatalogSeeder {
       schedule: {
         startAt: '2025-01-01T00:00:00Z',
         endAt: '2026-01-01T00:00:00Z',
-        timezone: 'UTC',
       },
       meta: { source: 'seed' },
     };
@@ -326,7 +325,6 @@ export class CatalogSeeder {
               schedule: {
                 startAt: '2025-03-01T00:00:00Z',
                 endAt: '2026-03-01T00:00:00Z',
-                timezone: 'UTC',
               },
             },
             images: ['https://cdn.example.com/products/lantern/main.png'],

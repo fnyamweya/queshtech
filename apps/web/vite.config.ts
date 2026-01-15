@@ -29,6 +29,13 @@ export default defineConfig(({ mode }) => {
         target: apiProxyTarget,
         changeOrigin: true,
       },
+
+      // Google OAuth endpoints are intentionally exposed without the /api prefix.
+      // Proxy them as well so local dev can use same-origin requests.
+      '/auth': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
     },
   },
   resolve: {

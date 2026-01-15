@@ -93,13 +93,15 @@ export function AdminGoogleAuthCallbackPage() {
         setStatus('working')
         setMessage('Exchanging sign-in code…')
 
-        const response = await apiRequest<{ accessToken: string; refreshToken: string }>(endpoints.auth.oauthExchange, {
+        const oauthKey = (storedOAuthKey && storedOAuthKey.trim()) || 'axis'
+
+        const response = await apiRequest<unknown>(endpoints.auth.oauthExchange, {
           method: 'POST',
-          body: { exchangeCode },
+          body: { exchangeCode, oauthKey },
         })
 
-        const nextAccess = response?.accessToken
-        const nextRefresh = response?.refreshToken
+        const nextAccess = extractAccessToken(response)
+        const nextRefresh = extractRefreshToken(response)
 
         if (!nextAccess) {
           throw new Error('Login succeeded but no access token was returned.')

@@ -13,6 +13,13 @@ const p = (path: string) => {
   return `${API_PREFIX}${withLeadingSlash}`
 }
 
+// Some backend endpoints are intentionally exposed without the global `/api/v1` prefix
+// (e.g. Google OAuth callbacks require exact URLs in provider consoles).
+const o = (path: string) => {
+  const withLeadingSlash = path.startsWith('/') ? path : `/${path}`
+  return withLeadingSlash
+}
+
 export const endpoints = {
   auth: {
     profile: p('/auth/profile'),
@@ -29,15 +36,16 @@ export const endpoints = {
     inviteDecline: p('/auth/user/invite/decline'),
     inviteUser: p('/auth/user/invite'),
 
-    // Google OAuth 2.0 (profile-key based)
-    google: p('/auth/google'),
-    googleByKey: (oauthKey: string) => p(`/auth/${encodeURIComponent(oauthKey)}/google`),
-    googleCallback: p('/auth/google/callback'),
-    googleCallbackByKey: (oauthKey: string) => p(`/auth/${encodeURIComponent(oauthKey)}/google/callback`),
+    // Google OAuth 2.0 (profile-key based) (NO /api prefix)
+    google: o('/auth/google'),
+    googleByKey: (oauthKey: string) => o(`/auth/${encodeURIComponent(oauthKey)}/google`),
+    // NOTE: This is a frontend SPA route (not an API endpoint). It must not be prefixed with /api/v1.
+    googleCallback: o('/oauth/google/callback'),
+    googleCallbackByKey: (oauthKey: string) => o(`/auth/${encodeURIComponent(oauthKey)}/google/callback`),
     customerGoogleExchange: p('/auth/customer/google/exchange'),
 
-    // Admin OAuth exchange (exchangeCode -> tokens)
-    oauthExchange: p('/auth/oauth/exchange'),
+    // OAuth exchange (exchangeCode -> tokens) (NO /api prefix)
+    oauthExchange: o('/auth/oauth/exchange'),
   },
   adminAuth: {
     login: p('/auth/admin/login'),

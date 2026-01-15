@@ -276,7 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Prevent open redirects. Only allow internal absolute paths.
-          if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('://') && !decoded.startsWith('/login') && !decoded.startsWith('/auth/google/callback')) {
+          if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('://') && !decoded.startsWith('/login') && !decoded.startsWith('/oauth/google/callback')) {
             window.localStorage.setItem('auth-post-auth-redirect', JSON.stringify(decoded))
           }
         }
@@ -286,8 +286,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Spec: redirect must be a RELATIVE UI path.
       // Backend will redirect back to this route with ?exchangeCode=...
-      const redirectPath = '/auth/google/callback'
+      const redirectPath = '/oauth/google/callback'
       const build = (base: string) => `${base}?redirect=${encodeURIComponent(redirectPath)}`
+
+      // Store the oauthKey so the callback can bind the exchange request.
+      try {
+        window.localStorage.setItem('auth-google-oauth-key', JSON.stringify('customer'))
+      } catch {
+        // ignore
+      }
 
       const candidates = [endpoints.auth.googleByKey('customer'), endpoints.auth.google]
 

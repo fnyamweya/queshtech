@@ -113,7 +113,6 @@ export class ProductController {
                   schedule: {
                     startAt: '2025-01-01T00:00:00Z',
                     endAt: '2025-12-31T23:59:59Z',
-                    timezone: 'UTC',
                   },
                   meta: {},
                 },
@@ -225,37 +224,6 @@ export class ProductController {
   async remove(@Param('id') id: string) {
     await this.productService.remove(id);
     return ResponseUtil.deleted('Product deleted successfully');
-  }
-
-  @Post('/:id/prices')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @ApiBearerAuth('access-token')
-  @RequirePermissions({
-    module: PermissionModule.PRODUCTS,
-    permission: 'update',
-  })
-  @ApiOperation({ summary: 'Add product-level price' })
-  @ApiCreatedResponse({ description: 'Product price created successfully' })
-  async addProductPrice(
-    @Param('id') id: string,
-    @Body() payload: CreateProductPriceDto,
-  ) {
-    const price = await this.productService.addProductPrice(id, payload);
-    return ResponseUtil.created(price, 'Product price created successfully');
-  }
-
-  @Get('/:id/prices')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @ApiBearerAuth('access-token')
-  @RequirePermissions({ module: PermissionModule.PRODUCTS, permission: 'read' })
-  @ApiOperation({ summary: 'List product-level prices' })
-  @ApiOkResponse({ description: 'Product prices retrieved successfully' })
-  async listProductPrices(@Param('id') id: string) {
-    const prices = await this.productService.listProductPrices(id);
-    return ResponseUtil.success(
-      prices,
-      'Product prices retrieved successfully',
-    );
   }
 
   @Post('/:id/skus/:skuId/prices')

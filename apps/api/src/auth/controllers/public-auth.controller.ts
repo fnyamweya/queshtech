@@ -7,6 +7,7 @@ import {
   Req,
   Res,
   UseGuards,
+  UnauthorizedException,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 import {
@@ -62,15 +63,34 @@ export class PublicAuthController {
   ) {
     const profile = request.user as OAuthProfile;
 
-    const { userId } = await this.authService.authorizeWithGoogleOAuth(
-      profile,
-      request,
-    );
-
-    const exchangeCode = await this.oauthExchangeService.issue(userId);
+    const oauthKey = String(
+      (request as any)?.params?.oauthKey ||
+        (request as any)?.__oauthGoogleSettingId ||
+        '',
+    ).trim();
 
     const redirectRaw = (request as any).__oauthRedirect as string | undefined;
     const redirectPath = this.normalizeRedirectPath(redirectRaw);
+
+    let userId: string;
+    try {
+      const result = await this.authService.authorizeWithGoogleOAuth(profile, request);
+      userId = result.userId;
+    } catch (err: any) {
+      // If the client asked for a UI redirect, redirect with standard OAuth-style error params.
+      if (redirectPath) {
+        const description =
+          typeof err?.message === 'string' && err.message.trim().length > 0
+            ? err.message.trim()
+            : 'OAuth authorization failed';
+        const withError = this.appendQueryParam(redirectPath, 'error', 'access_denied');
+        const location = this.appendQueryParam(withError, 'error_description', description);
+        return response.redirect(302, location);
+      }
+      throw err;
+    }
+
+    const exchangeCode = await this.oauthExchangeService.issue(userId, oauthKey);
 
     if (!redirectPath) {
       return response.status(200).json(
@@ -106,7 +126,8 @@ export class PublicAuthController {
   @Post('oauth/exchange')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Exchange a one-time OAuth exchangeCode for login tokens (any role)',
+    summary:
+      'Exchange a one-time OAuth exchangeCode for login tokens (bound to oauthKey + role-scoped)',
     description:
       'Used after the server-side OAuth callback redirects back to the client with an exchangeCode.',
   })
@@ -114,7 +135,17 @@ export class PublicAuthController {
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiUnauthorizedResponse({ description: 'Invalid or expired exchangeCode' })
   async oauthExchange(@Body() dto: OAuthExchangeDto, @Req() request: Request) {
-    const { userId } = await this.oauthExchangeService.consume(dto.exchangeCode);
+    const { userId, oauthKey } = await this.oauthExchangeService.consume(dto.exchangeCode);
+    if (!oauthKey || oauthKey !== dto.oauthKey) {
+      // Prevent cross-app/redirect mixing of exchange codes.
+      // Example: customer flow exchangeCode should not be usable for Axis.
+      throw new UnauthorizedException(
+        'Exchange code is not valid for this OAuth profile',
+      );
+    }
+
+    // Re-check role eligibility at exchange time to avoid granting tokens if roles/settings changed.
+    await this.authService.assertUserAllowedForGoogleOAuthProfile(userId, oauthKey);
     const result = await this.authService.loginUserById(userId, request);
     return ResponseUtil.success(result, 'Login successful');
   }

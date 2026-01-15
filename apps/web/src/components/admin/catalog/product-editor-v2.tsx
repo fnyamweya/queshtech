@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -21,28 +22,36 @@ import { cn } from '@/lib/utils'
 import type { Brand, Category } from '@/types'
 import type { CatalogProductStatus } from '@/types/catalog'
 import { useChannels } from '@/hooks/use-channels'
-import { useLocations } from '@/hooks/use-locations'
+import { useLocations, type LocationOption } from '@/hooks/use-locations'
 import { usePriceLists } from '@/hooks/use-pricing'
 import { CommonUpload, type CommonUploadHandle } from '@/components/common/common-upload'
+import { createApiClient } from '@/lib/api-client'
+import { endpoints } from '@/lib/endpoints'
 import {
   AlertTriangle,
+  Bold,
   CheckCircle2,
   CircleDashed,
-  Globe,
   Images,
-  Languages,
+  Italic,
   Layers,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
   Package,
   Plus,
+  Quote,
   Save,
   Sparkles,
   Trash2,
   X,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 type OptionDefinitionDraft = {
   key: string
   label: string
+  componentType: string
   allowedValues: string[]
   required: boolean
 }
@@ -55,13 +64,6 @@ type AvailabilityDraft = {
   stockQuantity: string
   startAt: string
   endAt: string
-  timezone: string
-}
-
-type TranslationDraft = {
-  locale: string
-  title: string
-  description: string
 }
 
 type PriceDraft = {
@@ -107,28 +109,125 @@ type ProductEditorDraft = {
   seoTitle: string
   seoDescription: string
   status: CatalogProductStatus
-  slug: string
   externalRef: string
   brandId: string
   categoryIds: string[]
   optionDefinitions: OptionDefinitionDraft[]
-  availability: AvailabilityDraft
-  images: string[]
-  translations: TranslationDraft[]
   skus: SkuDraft[]
-  prices: PriceDraft[]
 }
 
 function uniq(list: string[]): string[] {
   return Array.from(new Set(list))
 }
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '')
+function extractList(payload: unknown): any[] {
+  if (Array.isArray(payload)) return payload
+  const p: any = payload as any
+  if (Array.isArray(p?.data)) return p.data
+  if (Array.isArray(p?.items)) return p.items
+  if (Array.isArray(p?.results)) return p.results
+  if (Array.isArray(p?.data?.items)) return p.data.items
+  return []
+}
+
+function toCountryCode(raw: unknown): string {
+  return String(raw ?? '').trim().toUpperCase()
+}
+
+function countryLabel(code: string): string {
+  const cc = toCountryCode(code)
+  if (!cc) return ''
+  try {
+    const display = new Intl.DisplayNames(undefined, { type: 'region' })
+    const name = display.of(cc)
+    return name && name !== cc ? `${name} (${cc})` : cc
+  } catch {
+    return cc
+  }
+}
+
+function buildLocationOptions(locations: LocationOption[]): Array<{ value: string; label: string; countryCode?: string | null }> {
+  const byId = new Map<string, LocationOption>()
+  const childrenByParent = new Map<string, LocationOption[]>()
+  for (const l of locations) byId.set(l.id, l)
+
+  const roots: LocationOption[] = []
+  for (const l of locations) {
+    const parentId = l.parentId ? String(l.parentId) : ''
+    const hasParent = parentId && byId.has(parentId)
+    if (!hasParent) roots.push(l)
+    else {
+      const list = childrenByParent.get(parentId) || []
+      list.push(l)
+      childrenByParent.set(parentId, list)
+    }
+  }
+
+  const sortByName = (a: LocationOption, b: LocationOption) => String(a.name || '').localeCompare(String(b.name || ''))
+  roots.sort(sortByName)
+  for (const list of childrenByParent.values()) list.sort(sortByName)
+
+  const out: Array<{ value: string; label: string; countryCode?: string | null }> = []
+  const visited = new Set<string>()
+  const walk = (node: LocationOption, depth: number) => {
+    if (!node?.id || visited.has(node.id)) return
+    visited.add(node.id)
+    const indent = depth > 0 ? `${'\u00A0\u00A0'.repeat(depth)}- ` : ''
+    out.push({
+      value: node.code,
+      label: `${indent}${node.name}`,
+      countryCode: node.countryCode ?? null,
+    })
+    const kids = childrenByParent.get(node.id) || []
+    for (const k of kids) walk(k, depth + 1)
+  }
+
+  for (const r of roots) walk(r, 0)
+  if (out.length < locations.length) {
+    const remaining = locations.filter((l) => !visited.has(l.id)).sort(sortByName)
+    for (const r of remaining) walk(r, 0)
+  }
+  return out
+}
+
+function toLocationOption(raw: any, fallbackParentId?: string | null): LocationOption | null {
+  if (!raw || typeof raw !== 'object') return null
+  const id = String(raw.id ?? raw._id ?? '').trim()
+  const code = String(raw.code ?? raw.locationId ?? raw.key ?? id).trim()
+  const name = String(raw.name ?? raw.label ?? raw.displayName ?? code).trim()
+  if (!code) return null
+
+  const parentId = String(raw.parentId ?? raw.parent?.id ?? raw.parent?._id ?? fallbackParentId ?? '').trim() || null
+  const countryCode = String(raw.countryCode ?? raw.country?.countryCode ?? raw.country?.code ?? '').trim() || null
+
+  return {
+    id: id || code,
+    code,
+    name: name || code,
+    parentId,
+    countryCode,
+  }
+}
+
+function getChildren(raw: any): any[] {
+  if (!raw || typeof raw !== 'object') return []
+  if (Array.isArray(raw.children)) return raw.children
+  if (Array.isArray(raw.childLocations)) return raw.childLocations
+  if (Array.isArray(raw.subLocations)) return raw.subLocations
+  if (Array.isArray(raw.nodes)) return raw.nodes
+  if (Array.isArray(raw.items)) return raw.items
+  return []
+}
+
+function flattenLocationOptions(rawList: any[], parentId?: string | null): LocationOption[] {
+  const out: LocationOption[] = []
+  for (const raw of rawList) {
+    const loc = toLocationOption(raw, parentId ?? null)
+    if (loc) out.push(loc)
+    const children = getChildren(raw)
+    if (children.length) out.push(...flattenLocationOptions(children, loc?.id ?? parentId ?? null))
+  }
+  return out
 }
 
 function toDateTimeLocalValue(iso: string): string {
@@ -167,6 +266,178 @@ function numOrU(text: string): number | undefined {
   return Number.isFinite(value) ? value : undefined
 }
 
+function RichTextEditor(props: {
+  value: string
+  onChange: (next: string) => void
+  placeholder?: string
+  disabled?: boolean
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null)
+  const [mode, setMode] = useState<'write' | 'preview'>('write')
+  const [previewHtml, setPreviewHtml] = useState('')
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    if (mode !== 'preview') return
+
+    setIsPreviewLoading(true)
+    ;(async () => {
+      const [{ marked }, { default: DOMPurify }] = await Promise.all([import('marked'), import('dompurify')])
+      const raw = marked.parse(props.value || '')
+      const safe = DOMPurify.sanitize(String(raw))
+      if (!cancelled) setPreviewHtml(safe)
+    })()
+      .catch(() => {
+        if (!cancelled) setPreviewHtml('')
+      })
+      .finally(() => {
+        if (!cancelled) setIsPreviewLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [mode, props.value])
+
+  const apply = (transform: (text: string) => { text: string; selectionStart: number; selectionEnd: number }) => {
+    const el = ref.current
+    if (!el) return
+    const start = el.selectionStart ?? 0
+    const end = el.selectionEnd ?? 0
+    const before = props.value.slice(0, start)
+    const selected = props.value.slice(start, end)
+    const after = props.value.slice(end)
+    const next = transform(selected)
+    const value = `${before}${next.text}${after}`
+    props.onChange(value)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(before.length + next.selectionStart, before.length + next.selectionEnd)
+    })
+  }
+
+  const wrap = (prefix: string, suffix?: string) => {
+    apply((selected) => {
+      const s = selected || ''
+      const out = `${prefix}${s}${suffix ?? prefix}`
+      return { text: out, selectionStart: prefix.length, selectionEnd: prefix.length + s.length }
+    })
+  }
+
+  const insertLink = () => {
+    apply((selected) => {
+      const label = selected || 'link text'
+      const out = `[${label}](https://)`
+      const start = 1
+      const end = 1 + label.length
+      return { text: out, selectionStart: start, selectionEnd: end }
+    })
+  }
+
+  const prefixLines = (prefixer: (line: string, idx: number) => string) => {
+    apply((selected) => {
+      const block = selected || ''
+      const lines = (block || '').split('\n')
+      const out = lines.map(prefixer).join('\n')
+      return { text: out, selectionStart: 0, selectionEnd: out.length }
+    })
+  }
+
+  return (
+    <div className="rounded-lg border bg-background overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-2 py-2">
+        <div className="flex items-center gap-1">
+          <Button type="button" variant="ghost" size="sm" onClick={() => wrap('**')} disabled={props.disabled} aria-label="Bold">
+            <Bold className="h-4 w-4" />
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => wrap('_')} disabled={props.disabled} aria-label="Italic">
+            <Italic className="h-4 w-4" />
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={insertLink} disabled={props.disabled} aria-label="Link">
+            <LinkIcon className="h-4 w-4" />
+          </Button>
+          <Separator orientation="vertical" className="mx-1 h-6" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => prefixLines((line) => (line.trim() ? `- ${line}` : line))}
+            disabled={props.disabled}
+            aria-label="Bulleted list"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => prefixLines((line, idx) => (line.trim() ? `${idx + 1}. ${line}` : line))}
+            disabled={props.disabled}
+            aria-label="Numbered list"
+          >
+            <ListOrdered className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => prefixLines((line) => (line.trim() ? `> ${line}` : line))}
+            disabled={props.disabled}
+            aria-label="Quote"
+          >
+            <Quote className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={mode}
+          onValueChange={(v) => {
+            if (!v) return
+            setMode(v as any)
+          }}
+        >
+          <ToggleGroupItem value="write">Write</ToggleGroupItem>
+          <ToggleGroupItem value="preview">Preview</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {mode === 'preview' ? (
+        isPreviewLoading && !previewHtml ? (
+          <div className="p-3 text-sm text-muted-foreground">Loading preview…</div>
+        ) : (
+          <div
+            className={cn(
+              'p-3 text-sm leading-relaxed',
+              '[&_a]:text-primary [&_a]:underline-offset-4 hover:[&_a]:underline',
+              '[&_h1]:text-xl [&_h1]:font-semibold [&_h2]:text-lg [&_h2]:font-semibold',
+              '[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5',
+              '[&_p]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground'
+            )}
+            dangerouslySetInnerHTML={{ __html: previewHtml }}
+          />
+        )
+      ) : (
+        <Textarea
+          ref={ref}
+          value={props.value}
+          onChange={(e) => props.onChange(e.target.value)}
+          placeholder={props.placeholder}
+          disabled={props.disabled}
+          className="min-h-[180px] rounded-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+        />
+      )}
+
+      <div className="border-t bg-muted/10 px-3 py-2 text-xs text-muted-foreground">
+        Supports Markdown formatting. Use Preview to confirm the final output.
+      </div>
+    </div>
+  )
+}
+
 const blankPrice = (): PriceDraft => ({
   priceListId: '',
   unitPrice: '',
@@ -185,7 +456,6 @@ const blankAvailability = (): AvailabilityDraft => ({
   stockQuantity: '',
   startAt: '',
   endAt: '',
-  timezone: 'UTC',
 })
 
 const blankSku = (): SkuDraft => ({
@@ -216,7 +486,6 @@ function toDraft(product?: any): ProductEditorDraft {
     seoTitle: product?.seoTitle ?? '',
     seoDescription: product?.seoDescription ?? '',
     status: product?.status ?? 'draft',
-    slug: product?.slug ?? '',
     externalRef: product?.externalRef ?? '',
     brandId: product?.brandId ?? '',
     categoryIds: Array.isArray(product?.categoryIds) ? [...product.categoryIds] : [],
@@ -224,26 +493,11 @@ function toDraft(product?: any): ProductEditorDraft {
       ? product.optionDefinitions.map((o: any) => ({
           key: o.key || '',
           label: o.label || '',
+          componentType: o.componentType || '',
           allowedValues: Array.isArray(o.allowedValues) ? o.allowedValues : [],
           required: Boolean(o.required),
         }))
       : [],
-    availability: product?.availability
-      ? {
-          channels: Array.isArray(product.availability.channels) ? product.availability.channels : [],
-          countries: Array.isArray(product.availability.countries) ? product.availability.countries : [],
-          locations: Array.isArray(product.availability.locations) ? product.availability.locations : [],
-          stockType: product.availability.stock?.type === 'INFINITE' ? 'INFINITE' : 'FINITE',
-          stockQuantity: typeof product.availability.stock?.quantity === 'number' ? String(product.availability.stock.quantity) : '',
-          startAt: product.availability.schedule?.startAt || '',
-          endAt: product.availability.schedule?.endAt || '',
-          timezone: product.availability.schedule?.timezone || 'UTC',
-        }
-      : blankAvailability(),
-    images: Array.isArray(product?.images) ? product.images : [],
-    translations: Array.isArray(product?.translations) && product.translations.length
-      ? product.translations.map((t: any) => ({ locale: t.locale || '', title: t.title || '', description: t.description || '' }))
-      : [{ locale: 'en', title: '', description: '' }],
     skus: Array.isArray(product?.skus) && product.skus.length
       ? product.skus.map((s: any) => ({
           title: s.title || '',
@@ -262,7 +516,6 @@ function toDraft(product?: any): ProductEditorDraft {
                 stockQuantity: typeof s.availability.stock?.quantity === 'number' ? String(s.availability.stock.quantity) : '',
                 startAt: s.availability.schedule?.startAt || '',
                 endAt: s.availability.schedule?.endAt || '',
-                timezone: s.availability.schedule?.timezone || 'UTC',
               }
             : blankAvailability(),
           inventoryLocations: s.inventory?.locations
@@ -293,17 +546,6 @@ function toDraft(product?: any): ProductEditorDraft {
             : [],
         }))
       : [blankSku()],
-    prices: Array.isArray(product?.prices)
-      ? product.prices.map((p: any) => ({
-          priceListId: p.priceListId || '',
-          unitPrice: p.unitPrice !== undefined ? String(p.unitPrice) : '',
-          compareAtPrice: p.compareAtPrice !== undefined ? String(p.compareAtPrice) : '',
-          minQuantity: p.minQuantity !== undefined ? String(p.minQuantity) : '',
-          maxQuantity: p.maxQuantity !== undefined ? String(p.maxQuantity) : '',
-          validFrom: p.validFrom || '',
-          validTo: p.validTo || '',
-        }))
-      : [],
   }
 }
 
@@ -376,6 +618,7 @@ function MultiSelectAdd(props: {
   placeholder?: string
   helperText?: string
   disabled?: boolean
+  triggerClassName?: string
   options: Array<{ value: string; label: string; disabled?: boolean }>
   values: string[]
   onChange: (next: string[]) => void
@@ -402,7 +645,7 @@ function MultiSelectAdd(props: {
         }}
         disabled={props.disabled}
       >
-        <SelectTrigger>
+        <SelectTrigger className={props.triggerClassName}>
           <SelectValue placeholder={props.placeholder || 'Select'} />
         </SelectTrigger>
         <SelectContent>
@@ -440,12 +683,9 @@ function MultiSelectAdd(props: {
 
 const tabs = [
   { key: 'basics', label: 'Basics', desc: 'Title, brand, categories' },
-  { key: 'availability', label: 'Availability', desc: 'Channels, stock, schedule' },
   { key: 'options', label: 'Options', desc: 'Variants & attributes' },
   { key: 'media', label: 'Media', desc: 'Images & galleries' },
-  { key: 'translations', label: 'Translations', desc: 'Locales & descriptions' },
-  { key: 'skus', label: 'SKUs', desc: 'Inventory & pricing' },
-  { key: 'pricing', label: 'Pricing', desc: 'Top-level prices' },
+  { key: 'skus', label: 'SKUs', desc: 'Availability & pricing' },
 ] as const
 
 type TabKey = (typeof tabs)[number]['key']
@@ -457,6 +697,7 @@ export function ProductEditorV2(props: {
   categories: Category[]
   token?: string
   isSaving?: boolean
+  headerActions?: ReactNode
   onSave: (payload: any) => Promise<void>
   onDelete?: () => Promise<void>
 }) {
@@ -466,10 +707,16 @@ export function ProductEditorV2(props: {
   const [isDirty, setIsDirty] = useState(false)
   const uploadRef = useRef<CommonUploadHandle | null>(null)
   const [pendingMediaCount, setPendingMediaCount] = useState(0)
+  const [mediaSkuIndex, setMediaSkuIndex] = useState(0)
 
   const { channels } = useChannels({ token: props.token })
   const { locations } = useLocations({ token: props.token })
   const { priceLists } = usePriceLists({ token: props.token })
+  const api = useMemo(() => createApiClient({ token: props.token ?? null }), [props.token])
+
+  const [locationsByCountryCode, setLocationsByCountryCode] = useState<Record<string, LocationOption[]>>({})
+  const [locationsLoadingByCountryCode, setLocationsLoadingByCountryCode] = useState<Record<string, boolean>>({})
+  const countryLocationsInFlight = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     setDraft(toDraft(props.product))
@@ -477,77 +724,98 @@ export function ProductEditorV2(props: {
     setIsDirty(false)
   }, [props.product?.id])
 
+  useEffect(() => {
+    if (props.mode !== 'edit') return
+    if (isDirty) return
+    const nextStatus = props.product?.status as CatalogProductStatus | undefined
+    if (!nextStatus) return
+    setDraft((p) => (p.status === nextStatus ? p : { ...p, status: nextStatus }))
+  }, [isDirty, props.mode, props.product?.status])
+
   const brandsSorted = useMemo(() => [...props.brands].sort((a, b) => a.name.localeCompare(b.name)), [props.brands])
   const categoriesSorted = useMemo(() => [...props.categories].sort((a, b) => a.name.localeCompare(b.name)), [props.categories])
 
-  const locationOptions = useMemo(() => {
-    type Loc = (typeof locations)[number]
-    const byId = new Map<string, Loc>()
-    const childrenByParent = new Map<string, Loc[]>()
-    for (const l of locations) byId.set(l.id, l)
-
-    const roots: Loc[] = []
+  const availableCountryCodes = useMemo(() => {
+    const codes = new Set<string>()
     for (const l of locations) {
-      const parentId = (l as any).parentId ? String((l as any).parentId) : ''
-      const hasParent = parentId && byId.has(parentId)
-      if (!hasParent) roots.push(l)
-      else {
-        const list = childrenByParent.get(parentId) || []
-        list.push(l)
-        childrenByParent.set(parentId, list)
+      const cc = toCountryCode(l.countryCode)
+      if (cc) codes.add(cc)
+    }
+    for (const s of draft.skus) {
+      const cc = toCountryCode(s.availability.countries?.[0])
+      if (cc) codes.add(cc)
+    }
+    if (!codes.size) codes.add('KE')
+    return Array.from(codes).sort((a, b) => a.localeCompare(b))
+  }, [draft.skus, locations])
+
+  const countryCodesInUse = useMemo(() => {
+    const codes = draft.skus.map((s) => toCountryCode(s.availability.countries?.[0])).filter(Boolean)
+    return uniq(codes)
+  }, [draft.skus])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadForCode = async (countryCode: string) => {
+      if (!countryCode) return
+      if (Object.prototype.hasOwnProperty.call(locationsByCountryCode, countryCode)) return
+      if (countryLocationsInFlight.current.has(countryCode)) return
+
+      countryLocationsInFlight.current.add(countryCode)
+      setLocationsLoadingByCountryCode((p) => ({ ...p, [countryCode]: true }))
+
+      try {
+        const cfg = await api.get<any>(endpoints.countries.config({ countryCode }))
+        const countryId = cfg?.id ? String(cfg.id) : ''
+        if (!countryId) return
+        if (cancelled) return
+        const locPayload = await api.get<any>(`${endpoints.locations.base}?countryId=${encodeURIComponent(countryId)}`)
+        const rawList = extractList(locPayload)
+        const flattened = flattenLocationOptions(rawList)
+
+        const byCode = new Map<string, LocationOption>()
+        for (const l of flattened) {
+          if (!l?.code) continue
+          if (!byCode.has(l.code)) byCode.set(l.code, l)
+        }
+
+        const list = Array.from(byCode.values())
+        if (cancelled) return
+        setLocationsByCountryCode((p) => ({ ...p, [countryCode]: list }))
+      } catch {
+        // Best-effort: fall back to the global locations list in the UI.
+        setLocationsByCountryCode((p) => ({ ...p, [countryCode]: [] }))
+      } finally {
+        countryLocationsInFlight.current.delete(countryCode)
+        setLocationsLoadingByCountryCode((p) => ({ ...p, [countryCode]: false }))
       }
     }
 
-    const sortByName = (a: Loc, b: Loc) => String(a.name || '').localeCompare(String(b.name || ''))
-    roots.sort(sortByName)
-    for (const list of childrenByParent.values()) list.sort(sortByName)
-
-    const out: Array<{ value: string; label: string; countryCode?: string | null }> = []
-    const visited = new Set<string>()
-    const walk = (node: Loc, depth: number) => {
-      if (!node?.id || visited.has(node.id)) return
-      visited.add(node.id)
-      const indent = depth > 0 ? `${'\u00A0\u00A0'.repeat(depth)}- ` : ''
-      out.push({
-        value: node.code,
-        label: `${indent}${node.name}`,
-        countryCode: (node as any).countryCode ?? null,
-      })
-      const kids = childrenByParent.get(node.id) || []
-      for (const k of kids) walk(k, depth + 1)
+    for (const cc of countryCodesInUse) loadForCode(cc)
+    return () => {
+      cancelled = true
     }
-
-    for (const r of roots) walk(r, 0)
-    if (out.length < locations.length) {
-      const remaining = locations.filter((l) => !visited.has(l.id)).sort(sortByName)
-      for (const r of remaining) walk(r, 0)
-    }
-    return out
-  }, [locations])
-
-  const locationByCode = useMemo(() => {
-    const map = new Map<string, (typeof locations)[number]>()
-    for (const l of locations) map.set(l.code, l)
-    return map
-  }, [locations])
+  }, [api, countryCodesInUse, locationsByCountryCode])
 
   const selectedCategories = useMemo(() => {
     const map = new Map(props.categories.map((c) => [c.id, c]))
     return draft.categoryIds.map((id) => map.get(id)).filter(Boolean) as { id: string; name: string }[]
   }, [draft.categoryIds, props.categories])
 
-  const primaryTranslation = draft.translations[0]
-  const hasPrimaryTranslation = Boolean(primaryTranslation?.locale.trim() && primaryTranslation?.title.trim())
   const hasSku = draft.skus.some((s) => s.sku.trim())
-  const hasImages = draft.images.length > 0 || pendingMediaCount > 0
-  const hasPricing = draft.prices.some((p) => p.priceListId.trim() && p.unitPrice.trim())
-  const availabilityConfigured =
-    draft.availability.channels.length ||
-    draft.availability.countries.length ||
-    draft.availability.locations.length ||
-    draft.availability.stockQuantity.trim() ||
-    draft.availability.startAt.trim() ||
-    draft.availability.endAt.trim()
+  const hasImages = draft.skus.some((s) => (s.images || []).length > 0) || pendingMediaCount > 0
+  const hasPricing = draft.skus.some((s) => s.prices.some((p) => p.priceListId.trim() && p.unitPrice.trim()))
+  const skuAvailabilityConfigured = draft.skus.some(
+    (s) =>
+      s.availability.stockType === 'INFINITE' ||
+      s.availability.channels.length ||
+      s.availability.countries.length ||
+      s.availability.locations.length ||
+      s.availability.stockQuantity.trim() ||
+      s.availability.startAt.trim() ||
+      s.availability.endAt.trim(),
+  )
 
   const sectionStatus = useMemo(() => {
     const optionDefinitionsValid = draft.optionDefinitions.length
@@ -559,10 +827,6 @@ export function ProductEditorV2(props: {
         complete: Boolean(draft.title.trim()),
         error: Boolean(errors.title),
       },
-      availability: {
-        complete: Boolean(availabilityConfigured),
-        error: Object.keys(errors).some((k) => k.startsWith('availability')),
-      },
       options: {
         complete: optionDefinitionsValid,
         error: Object.keys(errors).some((k) => k.startsWith('options')),
@@ -571,32 +835,31 @@ export function ProductEditorV2(props: {
         complete: hasImages,
         error: Object.keys(errors).some((k) => k.startsWith('images')),
       },
-      translations: {
-        complete: hasPrimaryTranslation,
-        error: Boolean(errors.translations || errors['translations.0']),
-      },
       skus: {
         complete: hasSku,
         error: Object.keys(errors).some((k) => k.startsWith('skus')),
       },
-      pricing: {
-        complete: hasPricing,
-        error: Object.keys(errors).some((k) => k.startsWith('prices')),
-      },
     }
-  }, [availabilityConfigured, draft.optionDefinitions, draft.title, errors, hasImages, hasPricing, hasPrimaryTranslation, hasSku])
+  }, [draft.optionDefinitions, draft.title, errors, hasImages, hasSku])
 
   const coreChecks = [
-    { label: 'Title set', ok: Boolean(draft.title.trim()) },
-    { label: 'Primary translation', ok: hasPrimaryTranslation },
-    { label: 'At least one SKU', ok: hasSku },
+    { label: 'Title set', ok: Boolean(draft.title.trim()), optional: false },
+    { label: 'At least one SKU', ok: hasSku, optional: false },
   ]
   const optionalChecks = [
     { label: 'Images added', ok: hasImages, optional: true },
     { label: 'Pricing configured', ok: hasPricing, optional: true },
+    { label: 'Availability configured', ok: skuAvailabilityConfigured, optional: true },
   ]
   const coreReadyCount = coreChecks.filter((c) => c.ok).length
   const coreProgress = Math.round((coreReadyCount / coreChecks.length) * 100)
+
+  useEffect(() => {
+    setMediaSkuIndex((prev) => {
+      const max = Math.max(0, draft.skus.length - 1)
+      return Math.min(prev, max)
+    })
+  }, [draft.skus.length])
 
   const setDefaultSkuIndex = (idx: number) => {
     setDraft((p) => ({ ...p, skus: p.skus.map((s, i) => ({ ...s, isDefault: i === idx })) }))
@@ -607,15 +870,6 @@ export function ProductEditorV2(props: {
     const nextErrors: Record<string, string> = {}
     const title = draft.title.trim()
     if (!title) nextErrors.title = 'Title is required.'
-
-    const translations = draft.translations
-      .map((t) => ({ ...t, locale: t.locale.trim(), title: t.title.trim() }))
-      .filter((t) => t.locale || t.title || t.description.trim())
-
-    if (!translations.length) nextErrors.translations = 'At least one translation is required.'
-    if (translations.length && (!translations[0].locale || !translations[0].title)) {
-      nextErrors['translations.0'] = 'Primary translation requires locale and title.'
-    }
 
     draft.skus.forEach((s, idx) => {
       const sku = s.sku.trim()
@@ -635,32 +889,34 @@ export function ProductEditorV2(props: {
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) {
       if (nextErrors.title) setTab('basics')
-      else if (nextErrors.translations || nextErrors['translations.0']) setTab('translations')
-      else if (Object.keys(nextErrors).some((k) => k.startsWith('availability'))) setTab('availability')
       else if (Object.keys(nextErrors).some((k) => k.startsWith('skus'))) setTab('skus')
-      else if (Object.keys(nextErrors).some((k) => k.startsWith('prices'))) setTab('pricing')
       return
     }
 
     let uploadedUrls: string[] = []
     const pending = uploadRef.current?.getFiles() || []
     if (pending.length) {
-      const result = await uploadRef.current!.upload()
-      uploadedUrls = result.urls
+      try {
+        const result = await uploadRef.current!.upload()
+        uploadedUrls = result.urls
+      } catch (e: any) {
+        toast.error('Image upload failed', { description: e?.message || 'Please try again.' })
+        return
+      }
     }
+    const draftWithUploadedImages: ProductEditorDraft = uploadedUrls.length
+      ? {
+          ...draft,
+          skus: draft.skus.map((s, idx) =>
+            idx === mediaSkuIndex ? { ...s, images: uniq([...(s.images || []), ...uploadedUrls]) } : s,
+          ),
+        }
+      : draft
 
-    const allImages = uniq([...draft.images.map((u) => u.trim()).filter(Boolean), ...uploadedUrls])
     if (uploadedUrls.length) {
-      setDraft((p) => ({ ...p, images: allImages }))
+      setDraft(draftWithUploadedImages)
+      setIsDirty(true)
     }
-
-    const availabilityHasAny =
-      draft.availability.channels.length ||
-      draft.availability.countries.length ||
-      draft.availability.locations.length ||
-      draft.availability.stockQuantity.trim() ||
-      draft.availability.startAt.trim() ||
-      draft.availability.endAt.trim()
 
     const payload: any = {
       title,
@@ -668,7 +924,6 @@ export function ProductEditorV2(props: {
       seoTitle: draft.seoTitle.trim() || undefined,
       seoDescription: draft.seoDescription.trim() || undefined,
       status: draft.status,
-      slug: draft.slug.trim() || undefined,
       externalRef: draft.externalRef.trim() || undefined,
       brandId: draft.brandId.trim() || undefined,
       categoryIds: draft.categoryIds.length ? draft.categoryIds : undefined,
@@ -676,40 +931,16 @@ export function ProductEditorV2(props: {
         .map((o) => ({
           key: o.key.trim(),
           label: o.label.trim(),
+          componentType: o.componentType.trim() || undefined,
           allowedValues: o.allowedValues.map((v) => v.trim()).filter(Boolean),
           required: Boolean(o.required),
         }))
         .filter((o) => o.key && o.label),
-      images: allImages.length ? allImages : undefined,
-      translations: translations.map((t) => ({
-        locale: t.locale,
-        title: t.title,
-        description: t.description.trim() || undefined,
-      })),
-    }
-
-    if (availabilityHasAny) {
-      const stockQty = intOrU(draft.availability.stockQuantity)
-      payload.availability = {
-        channels: draft.availability.channels,
-        countries: draft.availability.countries,
-        locations: draft.availability.locations,
-        stock: {
-          type: draft.availability.stockType,
-          ...(draft.availability.stockType === 'FINITE' ? { quantity: stockQty ?? 0 } : {}),
-        },
-        schedule: {
-          startAt: draft.availability.startAt.trim() || undefined,
-          endAt: draft.availability.endAt.trim() || undefined,
-          timezone: draft.availability.timezone.trim() || 'UTC',
-        },
-        meta: {},
-      }
     }
 
     const ensuredDefaultIndex = draft.skus.findIndex((s) => s.isDefault)
     const defaultIdx = ensuredDefaultIndex >= 0 ? ensuredDefaultIndex : 0
-    payload.skus = draft.skus
+    payload.skus = draftWithUploadedImages.skus
       .map((s, idx) => {
         const options: Record<string, string> = {}
         for (const [k, v] of Object.entries(s.options || {})) {
@@ -732,6 +963,7 @@ export function ProductEditorV2(props: {
         const inventory = Object.keys(invLocations).length ? { locations: invLocations } : undefined
 
         const skuAvailabilityHasAny =
+          s.availability.stockType === 'INFINITE' ||
           s.availability.channels.length ||
           s.availability.countries.length ||
           s.availability.locations.length ||
@@ -760,13 +992,12 @@ export function ProductEditorV2(props: {
                 schedule: {
                   startAt: s.availability.startAt.trim() || undefined,
                   endAt: s.availability.endAt.trim() || undefined,
-                  timezone: s.availability.timezone.trim() || 'UTC',
                 },
                 meta: {},
               }
             : undefined,
           inventory,
-          images: s.images.map((u) => u.trim()).filter(Boolean),
+          images: (s.images || []).map((u) => u.trim()).filter(Boolean),
           requiresShipping: Boolean(s.requiresShipping),
           weight: numOrU(s.weight),
           length: numOrU(s.length),
@@ -790,23 +1021,12 @@ export function ProductEditorV2(props: {
       })
       .filter((s: any) => s.sku || s.title)
 
-    const topPrices = draft.prices
-      .map((p) => ({
-        priceListId: p.priceListId.trim() || undefined,
-        unitPrice: numOrU(p.unitPrice),
-        compareAtPrice: numOrU(p.compareAtPrice),
-        minQuantity: intOrU(p.minQuantity),
-        maxQuantity: intOrU(p.maxQuantity),
-        validFrom: p.validFrom.trim() || undefined,
-        validTo: p.validTo.trim() || undefined,
-        metaJson: {},
-      }))
-      .filter((p) => p.priceListId && typeof p.unitPrice === 'number')
-
-    if (topPrices.length) payload.prices = topPrices
-
-    await props.onSave(payload)
-    setIsDirty(false)
+    try {
+      await props.onSave(payload)
+      setIsDirty(false)
+    } catch {
+      // Parent pages toast errors; keep draft dirty on failure.
+    }
   }
 
   return (
@@ -840,18 +1060,19 @@ export function ProductEditorV2(props: {
                 <div>
                   <h2 className="text-2xl font-semibold">{draft.title.trim() || 'Untitled product'}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Build a complete catalog record with variants, pricing, availability, and localized copy.
+                    Build a complete catalog record with SKUs, pricing, and availability.
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={submit} disabled={props.isSaving || !isDirty}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save
-                </Button>
-                {props.onDelete ? (
-                  <Button variant="outline" onClick={() => props.onDelete?.()} disabled={props.isSaving}>
-                    <Trash2 className="h-4 w-4 mr-2" />
+	              <div className="flex flex-wrap items-center gap-2">
+	                {props.headerActions}
+	                <Button onClick={submit} disabled={props.isSaving || !isDirty}>
+	                  <Save className="h-4 w-4 mr-2" />
+	                  {props.mode === 'create' ? 'Create product' : 'Save changes'}
+	                </Button>
+	                {props.onDelete ? (
+	                  <Button variant="outline" onClick={() => props.onDelete?.()} disabled={props.isSaving}>
+	                    <Trash2 className="h-4 w-4 mr-2" />
                     Delete
                   </Button>
                 ) : null}
@@ -865,12 +1086,12 @@ export function ProductEditorV2(props: {
                 description="Assigned groups"
                 icon={<Layers className="h-4 w-4" />}
               />
-              <AxisStat
-                label="Images"
-                value={draft.images.length + pendingMediaCount}
-                description={hasImages ? 'Media attached' : 'No media yet'}
-                icon={<Images className="h-4 w-4" />}
-              />
+	              <AxisStat
+	                label="Images"
+	                value={draft.skus.reduce((sum, s) => sum + (s.images || []).length, 0) + pendingMediaCount}
+	                description={hasImages ? 'Media attached' : 'No media yet'}
+	                icon={<Images className="h-4 w-4" />}
+	              />
               <AxisStat
                 label="SKUs"
                 value={draft.skus.length}
@@ -878,10 +1099,10 @@ export function ProductEditorV2(props: {
                 icon={<Package className="h-4 w-4" />}
               />
               <AxisStat
-                label="Translations"
-                value={draft.translations.length}
-                description={hasPrimaryTranslation ? 'Primary ready' : 'Primary needed'}
-                icon={<Languages className="h-4 w-4" />}
+                label="Prices"
+                value={draft.skus.reduce((sum, s) => sum + s.prices.length, 0)}
+                description={hasPricing ? 'SKU pricing set' : 'No pricing yet'}
+                icon={<Sparkles className="h-4 w-4" />}
               />
             </div>
           </CardContent>
@@ -941,7 +1162,7 @@ export function ProductEditorV2(props: {
                   description="Core identity, merchandising, and discovery metadata."
                   icon={<Layers className="h-4 w-4" />}
                 >
-                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  <div className="grid gap-6">
                     <div className="space-y-6">
                       <AxisField label="Product title" required error={errors.title}>
                         <Input
@@ -955,105 +1176,92 @@ export function ProductEditorV2(props: {
                         />
                       </AxisField>
 
-                      <AxisField
-                        label="Description"
-                        description="Write a concise, benefit-led summary for listings and detail pages."
-                      >
-                        <Textarea
-                          value={draft.description}
-                          onChange={(e) => {
-                            setDraft((p) => ({ ...p, description: e.target.value }))
-                            setIsDirty(true)
-                          }}
-                          placeholder="Short product description…"
-                          className="min-h-[120px]"
-                          disabled={props.isSaving}
-                        />
-                      </AxisField>
+	                      <AxisField
+	                        label="Description"
+	                        description="Write a concise, benefit-led summary. Supports formatting."
+	                      >
+	                        <RichTextEditor
+	                          value={draft.description}
+	                          onChange={(value) => {
+	                            setDraft((p) => ({ ...p, description: value }))
+	                            setIsDirty(true)
+	                          }}
+	                          placeholder="Short product description…"
+	                          disabled={props.isSaving}
+	                        />
+	                      </AxisField>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <AxisField label="Status">
-                          <Select
-                            value={draft.status}
-                            onValueChange={(v) => {
-                              setDraft((p) => ({ ...p, status: v as CatalogProductStatus }))
-                              setIsDirty(true)
-                            }}
-                            disabled={props.isSaving}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="draft">Draft</SelectItem>
-                              <SelectItem value="active">Active</SelectItem>
-                              <SelectItem value="archived">Archived</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </AxisField>
-                        <AxisField label="Slug" description="Used for product URLs and indexing.">
-                          <div className="flex gap-2">
-                            <Input
-                              value={draft.slug}
-                              onChange={(e) => {
-                                setDraft((p) => ({ ...p, slug: e.target.value }))
-                                setIsDirty(true)
-                              }}
-                              placeholder="iphone-15"
-                              disabled={props.isSaving}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const nextSlug = slugify(draft.title || draft.slug)
-                                setDraft((p) => ({ ...p, slug: nextSlug }))
-                                setIsDirty(true)
-                              }}
-                              disabled={props.isSaving || !draft.title.trim()}
-                            >
-                              Generate
-                            </Button>
-                          </div>
-                        </AxisField>
-                      </div>
+	                      <div className="grid gap-4 sm:grid-cols-2">
+	                        <AxisField label="Status" description="Controls storefront visibility.">
+	                          <ToggleGroup
+	                            type="single"
+	                            variant="outline"
+	                            value={draft.status}
+	                            onValueChange={(v) => {
+	                              if (!v) return
+	                              setDraft((p) => ({ ...p, status: v as CatalogProductStatus }))
+	                              setIsDirty(true)
+	                            }}
+	                            className="w-full sm:w-fit"
+	                          >
+	                            <ToggleGroupItem value="draft" className="flex-1">
+	                              Draft
+	                            </ToggleGroupItem>
+	                            <ToggleGroupItem value="active" className="flex-1">
+	                              Active
+	                            </ToggleGroupItem>
+	                            <ToggleGroupItem value="archived" className="flex-1">
+	                              Archived
+	                            </ToggleGroupItem>
+	                          </ToggleGroup>
+	                        </AxisField>
+	                        <AxisField label="Slug" description="Generated automatically from the API.">
+	                          <Input
+	                            value={props.product?.slug ? String(props.product.slug) : ''}
+	                            placeholder={props.mode === 'create' ? 'Generated after creation' : '—'}
+	                            readOnly
+	                            disabled={props.isSaving}
+	                            className="h-10"
+	                          />
+	                        </AxisField>
+	                      </div>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <AxisField label="Brand">
-                          <Select
-                            value={draft.brandId || '__none__'}
-                            onValueChange={(v) => {
-                              setDraft((p) => ({ ...p, brandId: v === '__none__' ? '' : v }))
-                              setIsDirty(true)
-                            }}
-                            disabled={props.isSaving}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select brand" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">No brand</SelectItem>
-                              {brandsSorted.map((b) => (
+	                      <div className="grid gap-4 sm:grid-cols-2">
+	                        <AxisField label="Brand" description="Optional">
+	                          <Select
+	                            value={draft.brandId || '__none__'}
+	                            onValueChange={(v) => {
+	                              setDraft((p) => ({ ...p, brandId: v === '__none__' ? '' : v }))
+	                              setIsDirty(true)
+	                            }}
+	                            disabled={props.isSaving}
+	                          >
+	                            <SelectTrigger className="h-10">
+	                              <SelectValue placeholder="Select brand" />
+	                            </SelectTrigger>
+	                            <SelectContent>
+	                              <SelectItem value="__none__">No brand</SelectItem>
+	                              {brandsSorted.map((b) => (
                                 <SelectItem key={b.id} value={b.id}>
                                   {b.name}
                                 </SelectItem>
                               ))}
-                            </SelectContent>
-                          </Select>
-                        </AxisField>
-                        <AxisField label="External reference" description="ERP, PIM, or legacy system ID.">
-                          <Input
-                            value={draft.externalRef}
-                            onChange={(e) => {
-                              setDraft((p) => ({ ...p, externalRef: e.target.value }))
-                              setIsDirty(true)
-                            }}
-                            placeholder="erp-1234"
-                            disabled={props.isSaving}
-                          />
-                        </AxisField>
-                      </div>
+	                            </SelectContent>
+	                          </Select>
+	                        </AxisField>
+	                        <AxisField label="External reference" description="Optional (ERP/PIM/legacy ID).">
+	                          <Input
+	                            value={draft.externalRef}
+	                            onChange={(e) => {
+	                              setDraft((p) => ({ ...p, externalRef: e.target.value }))
+	                              setIsDirty(true)
+	                            }}
+	                            placeholder="erp-1234"
+	                            disabled={props.isSaving}
+	                            className="h-10"
+	                          />
+	                        </AxisField>
+	                      </div>
 
                       <AxisField label="Categories" description="Assign categories to improve navigation and discovery.">
                         <Popover>
@@ -1138,78 +1346,99 @@ export function ProductEditorV2(props: {
                       ) : null}
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
-                        <div>
-                          <p className="text-sm font-medium">Search optimization</p>
-                          <p className="text-xs text-muted-foreground">Control how the product appears in search previews.</p>
-                        </div>
-                        <AxisField label="SEO title">
-                          <Input
-                            value={draft.seoTitle}
-                            onChange={(e) => {
-                              setDraft((p) => ({ ...p, seoTitle: e.target.value }))
-                              setIsDirty(true)
-                            }}
-                            placeholder="iPhone 15 | Shop"
-                            disabled={props.isSaving}
-                          />
-                        </AxisField>
-                        <AxisField label="SEO description">
-                          <Input
-                            value={draft.seoDescription}
-                            onChange={(e) => {
-                              setDraft((p) => ({ ...p, seoDescription: e.target.value }))
-                              setIsDirty(true)
-                            }}
-                            placeholder="Flagship smartphone with pro-grade camera and long battery life."
-                            disabled={props.isSaving}
-                          />
-                        </AxisField>
-                      </div>
-                      <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <Globe className="h-4 w-4" />
-                          Publishing targets
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Availability, channels, and scheduling are configured in the Availability section.
-                        </p>
-                      </div>
-                    </div>
+	                    <Accordion type="single" collapsible className="rounded-lg border bg-muted/20">
+	                      <AccordionItem value="seo" className="border-b-0">
+	                        <AccordionTrigger className="px-4">SEO (optional)</AccordionTrigger>
+	                        <AccordionContent className="px-4 pb-4">
+	                          <div className="grid gap-4 sm:grid-cols-2">
+	                            <AxisField label="SEO title">
+	                              <Input
+	                                value={draft.seoTitle}
+	                                onChange={(e) => {
+	                                  setDraft((p) => ({ ...p, seoTitle: e.target.value }))
+	                                  setIsDirty(true)
+	                                }}
+	                                placeholder="iPhone 15 | Shop"
+	                                disabled={props.isSaving}
+	                                className="h-10"
+	                              />
+	                            </AxisField>
+	                            <AxisField label="SEO description">
+	                              <Input
+	                                value={draft.seoDescription}
+	                                onChange={(e) => {
+	                                  setDraft((p) => ({ ...p, seoDescription: e.target.value }))
+	                                  setIsDirty(true)
+	                                }}
+	                                placeholder="Flagship smartphone with pro-grade camera and long battery life."
+	                                disabled={props.isSaving}
+	                                className="h-10"
+	                              />
+	                            </AxisField>
+	                          </div>
+	                        </AccordionContent>
+	                      </AccordionItem>
+	                    </Accordion>
                   </div>
                 </AxisSection>
               </motion.div>
             </TabsContent>
 
-            <TabsContent value="media" className="mt-0">
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-                <AxisSection
-                  title="Media"
-                  description="Product-level images used across listings and galleries."
-                  icon={<Images className="h-4 w-4" />}
-                >
-                  {draft.images.length ? (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {draft.images.map((url) => (
-                        <div key={url} className="group relative overflow-hidden rounded-lg border bg-muted/20">
-                          <AspectRatio ratio={4 / 3}>
-                            <img src={url} alt="Product" className="h-full w-full object-cover" />
-                          </AspectRatio>
+	            <TabsContent value="media" className="mt-0">
+	              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+	                <AxisSection
+	                  title="Media"
+	                  description="Upload images for a specific SKU."
+	                  icon={<Images className="h-4 w-4" />}
+	                  actions={
+	                    <Select
+	                      value={String(mediaSkuIndex)}
+	                      onValueChange={(v) => setMediaSkuIndex(Number(v))}
+	                      disabled={props.isSaving || draft.skus.length === 0}
+	                    >
+	                      <SelectTrigger className="w-[240px] h-10">
+	                        <SelectValue placeholder="Select SKU" />
+	                      </SelectTrigger>
+	                      <SelectContent>
+	                        {draft.skus.map((s, idx) => (
+	                          <SelectItem key={idx} value={String(idx)}>
+	                            {s.sku || s.title || `SKU #${idx + 1}`}{s.isDefault ? ' • default' : ''}
+	                          </SelectItem>
+	                        ))}
+	                      </SelectContent>
+	                    </Select>
+	                  }
+	                >
+	                  {draft.skus.length === 0 ? (
+	                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+	                      Add a SKU first, then upload images to that SKU.
+	                    </div>
+	                  ) : (draft.skus[mediaSkuIndex]?.images || []).length ? (
+	                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+	                      {(draft.skus[mediaSkuIndex]?.images || []).map((url) => (
+	                        <div key={url} className="group relative overflow-hidden rounded-lg border bg-muted/20">
+	                          <AspectRatio ratio={4 / 3}>
+	                            <img src={url} alt="Product" className="h-full w-full object-cover" />
+	                          </AspectRatio>
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
                             <p className="text-xs text-white/80 truncate">{url}</p>
                           </div>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="absolute right-2 top-2 rounded-full bg-background/90 p-1 text-muted-foreground shadow transition hover:text-foreground"
-                                onClick={() => {
-                                  setDraft((p) => ({ ...p, images: p.images.filter((x) => x !== url) }))
-                                  setIsDirty(true)
-                                }}
-                                aria-label="Remove image"
-                                disabled={props.isSaving}
+	                              <button
+	                                type="button"
+	                                className="absolute right-2 top-2 rounded-full bg-background/90 p-1 text-muted-foreground shadow transition hover:text-foreground"
+	                                onClick={() => {
+	                                  setDraft((p) => ({
+	                                    ...p,
+	                                    skus: p.skus.map((s, idx) =>
+	                                      idx === mediaSkuIndex ? { ...s, images: (s.images || []).filter((x) => x !== url) } : s,
+	                                    ),
+	                                  }))
+	                                  setIsDirty(true)
+	                                }}
+	                                aria-label="Remove image"
+	                                disabled={props.isSaving}
                               >
                                 <X className="h-3 w-3" />
                               </button>
@@ -1219,34 +1448,34 @@ export function ProductEditorV2(props: {
                         </div>
                       ))}
                     </div>
-                  ) : (
-                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                      No images yet. Add hero and gallery shots for this product.
-                    </div>
-                  )}
+	                  ) : (
+	                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+	                      No images yet for this SKU. Add hero and gallery shots.
+	                    </div>
+	                  )}
 
-                  <CommonUpload
+	                  <CommonUpload
                     ref={uploadRef}
                     mode="deferred"
                     label="Upload images"
                     description="Choose images now; they upload when you save."
-                    folder="products"
-                    multiple
-                    accept="image/*"
-                    imagesOnly
-                    isPublic
-                    token={props.token}
-                    onFilesChange={(files) => {
-                      setPendingMediaCount(files.length)
-                      if (files.length) setIsDirty(true)
-                    }}
-                    onUploaded={() => {}}
-                    disabled={props.isSaving}
-                  />
-                  <div className="text-xs text-muted-foreground">Pending uploads: {pendingMediaCount}</div>
-                </AxisSection>
-              </motion.div>
-            </TabsContent>
+	                    folder="products"
+	                    multiple
+	                    accept="image/*"
+	                    imagesOnly
+	                    isPublic
+	                    disabled={props.isSaving || draft.skus.length === 0}
+	                    token={props.token}
+	                    onFilesChange={(files) => {
+	                      setPendingMediaCount(files.length)
+	                      if (files.length) setIsDirty(true)
+	                    }}
+	                    onUploaded={() => {}}
+	                  />
+	                  <div className="text-xs text-muted-foreground">Pending uploads: {pendingMediaCount}</div>
+	                </AxisSection>
+	              </motion.div>
+	            </TabsContent>
 
             <TabsContent value="options" className="mt-0">
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
@@ -1261,7 +1490,10 @@ export function ProductEditorV2(props: {
                       onClick={() => {
                         setDraft((p) => ({
                           ...p,
-                          optionDefinitions: [...p.optionDefinitions, { key: '', label: '', allowedValues: [], required: false }],
+                          optionDefinitions: [
+                            ...p.optionDefinitions,
+                            { key: '', label: '', componentType: 'select', allowedValues: [], required: false },
+                          ],
                         }))
                         setIsDirty(true)
                       }}
@@ -1307,7 +1539,7 @@ export function ProductEditorV2(props: {
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
-                              <div className="grid gap-4 sm:grid-cols-2">
+                              <div className="grid gap-4 sm:grid-cols-3">
                                 <AxisField label="Key" description="Used in APIs and SKU option mapping.">
                                   <Input
                                     value={o.key}
@@ -1339,6 +1571,31 @@ export function ProductEditorV2(props: {
                                     placeholder="Color"
                                     disabled={props.isSaving}
                                   />
+                                </AxisField>
+                                <AxisField label="Component type" description="Controls how this option renders.">
+                                  <Select
+                                    value={o.componentType || 'select'}
+                                    onValueChange={(componentType) => {
+                                      setDraft((p) => ({
+                                        ...p,
+                                        optionDefinitions: p.optionDefinitions.map((x, i) =>
+                                          i === idx ? { ...x, componentType } : x,
+                                        ),
+                                      }))
+                                      setIsDirty(true)
+                                    }}
+                                    disabled={props.isSaving}
+                                  >
+		                                              <SelectTrigger className="h-10">
+		                                                <SelectValue placeholder="Select" />
+		                                              </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="select">select</SelectItem>
+                                      <SelectItem value="radio">radio</SelectItem>
+                                      <SelectItem value="color_swatch">color_swatch</SelectItem>
+                                      <SelectItem value="text">text</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                 </AxisField>
                               </div>
 
@@ -1387,272 +1644,14 @@ export function ProductEditorV2(props: {
               </motion.div>
             </TabsContent>
 
-            <TabsContent value="availability" className="mt-0">
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-                <AxisSection
-                  title="Availability"
-                  description="Control channels, regions, stock policy, and scheduling."
-                  icon={<Globe className="h-4 w-4" />}
-                >
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <MultiSelectAdd
-                      label="Channels"
-                      values={draft.availability.channels}
-                      onChange={(channels) => {
-                        setDraft((p) => ({ ...p, availability: { ...p.availability, channels } }))
-                        setIsDirty(true)
-                      }}
-                      placeholder="Select a channel"
-                      helperText="Choose one or more channels"
-                      disabled={props.isSaving}
-                      options={channels.map((c) => ({ value: c.code, label: c.name, disabled: c.isActive === false }))}
-                    />
-                    <TagInput
-                      label="Countries"
-                      values={draft.availability.countries}
-                      onChange={(countries) => {
-                        setDraft((p) => ({ ...p, availability: { ...p.availability, countries } }))
-                        setIsDirty(true)
-                      }}
-                      placeholder="KE"
-                      helperText="ISO-2 codes, e.g. KE, TZ"
-                      disabled={props.isSaving}
-                    />
-                    <MultiSelectAdd
-                      label="Locations"
-                      values={draft.availability.locations}
-                      onChange={(locs) => {
-                        setDraft((p) => ({ ...p, availability: { ...p.availability, locations: locs } }))
-                        setIsDirty(true)
-                      }}
-                      onAdd={(code) => {
-                        setDraft((p) => {
-                          const nextLocations = p.availability.locations.includes(code)
-                            ? p.availability.locations
-                            : [...p.availability.locations, code]
-                          const country = String((locationByCode.get(code) as any)?.countryCode ?? '').trim()
-                          const nextCountries = country ? uniq([...p.availability.countries, country]) : p.availability.countries
-                          return { ...p, availability: { ...p.availability, locations: nextLocations, countries: nextCountries } }
-                        })
-                        setIsDirty(true)
-                      }}
-                      placeholder="Select a location"
-                      helperText="Choosing a location auto-adds its country (when available)"
-                      disabled={props.isSaving}
-                      options={locationOptions.map((o) => ({ value: o.value, label: o.label }))}
-                    />
-                  </div>
-
-                  <Separator />
-
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <AxisField label="Stock type">
-                      <Select
-                        value={draft.availability.stockType}
-                        onValueChange={(v) => {
-                          setDraft((p) => ({ ...p, availability: { ...p.availability, stockType: v as any } }))
-                          setIsDirty(true)
-                        }}
-                        disabled={props.isSaving}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="FINITE">FINITE</SelectItem>
-                          <SelectItem value="INFINITE">INFINITE</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </AxisField>
-                    <AxisField label="Stock quantity" description="Required for FINITE inventory.">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={draft.availability.stockQuantity}
-                        onChange={(e) => {
-                          setDraft((p) => ({ ...p, availability: { ...p.availability, stockQuantity: e.target.value } }))
-                          setIsDirty(true)
-                        }}
-                        disabled={props.isSaving || draft.availability.stockType !== 'FINITE'}
-                        placeholder="20"
-                      />
-                    </AxisField>
-                    <AxisField label="Timezone">
-                      <Input
-                        value={draft.availability.timezone}
-                        onChange={(e) => {
-                          setDraft((p) => ({ ...p, availability: { ...p.availability, timezone: e.target.value } }))
-                          setIsDirty(true)
-                        }}
-                        placeholder="UTC"
-                        disabled={props.isSaving}
-                      />
-                    </AxisField>
-                  </div>
-
-                  <Separator />
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <AxisField label="Start at">
-                      <Input
-                        type="datetime-local"
-                        value={toDateTimeLocalValue(draft.availability.startAt)}
-                        onChange={(e) => {
-                          setDraft((p) => ({
-                            ...p,
-                            availability: { ...p.availability, startAt: fromDateTimeLocalValue(e.target.value) },
-                          }))
-                          setIsDirty(true)
-                        }}
-                        disabled={props.isSaving}
-                      />
-                    </AxisField>
-                    <AxisField label="End at">
-                      <Input
-                        type="datetime-local"
-                        value={toDateTimeLocalValue(draft.availability.endAt)}
-                        onChange={(e) => {
-                          setDraft((p) => ({
-                            ...p,
-                            availability: { ...p.availability, endAt: fromDateTimeLocalValue(e.target.value) },
-                          }))
-                          setIsDirty(true)
-                        }}
-                        disabled={props.isSaving}
-                      />
-                    </AxisField>
-                  </div>
-                </AxisSection>
-              </motion.div>
-            </TabsContent>
-
-            <TabsContent value="translations" className="mt-0">
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-                <AxisSection
-                  title="Translations"
-                  description="Localized titles and descriptions for global catalogs."
-                  icon={<Languages className="h-4 w-4" />}
-                  actions={
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setDraft((p) => ({
-                          ...p,
-                          translations: [...p.translations, { locale: '', title: '', description: '' }],
-                        }))
-                        setIsDirty(true)
-                      }}
-                      disabled={props.isSaving}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add translation
-                    </Button>
-                  }
-                >
-                  {errors.translations || errors['translations.0'] ? (
-                    <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-                      {errors.translations || errors['translations.0']}
-                    </div>
-                  ) : null}
-
-                  <Accordion type="multiple" defaultValue={['translation-0']} className="rounded-lg border bg-muted/20">
-                    {draft.translations.map((t, idx) => (
-                      <AccordionItem key={idx} value={`translation-${idx}`} className="border-b last:border-b-0">
-                        <AccordionTrigger className="px-4">
-                          <div className="flex w-full items-center justify-between">
-                            <div className="flex flex-col items-start">
-                              <span className="text-sm font-medium">{idx === 0 ? 'Primary translation' : `Translation #${idx + 1}`}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {t.locale || 'Locale'} • {t.title || 'Title'}
-                              </span>
-                            </div>
-                            {idx === 0 ? <Badge variant="secondary">Primary</Badge> : null}
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="px-4">
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-end">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                disabled={props.isSaving || draft.translations.length <= 1}
-                                onClick={() => {
-                                  setDraft((p) => ({
-                                    ...p,
-                                    translations: p.translations.filter((_, i) => i !== idx),
-                                  }))
-                                  setIsDirty(true)
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="grid gap-4 sm:grid-cols-2">
-                              <AxisField label="Locale" description="ISO language code, e.g. en, fr, sw.">
-                                <Input
-                                  value={t.locale}
-                                  onChange={(e) => {
-                                    setDraft((p) => ({
-                                      ...p,
-                                      translations: p.translations.map((x, i) => (i === idx ? { ...x, locale: e.target.value } : x)),
-                                    }))
-                                    setIsDirty(true)
-                                  }}
-                                  placeholder="en"
-                                  disabled={props.isSaving}
-                                />
-                              </AxisField>
-                              <AxisField label="Title">
-                                <Input
-                                  value={t.title}
-                                  onChange={(e) => {
-                                    setDraft((p) => ({
-                                      ...p,
-                                      translations: p.translations.map((x, i) => (i === idx ? { ...x, title: e.target.value } : x)),
-                                    }))
-                                    setIsDirty(true)
-                                  }}
-                                  placeholder="iPhone 15"
-                                  disabled={props.isSaving}
-                                />
-                              </AxisField>
-                            </div>
-
-                            <AxisField label="Description">
-                              <Textarea
-                                value={t.description}
-                                onChange={(e) => {
-                                  setDraft((p) => ({
-                                    ...p,
-                                    translations: p.translations.map((x, i) =>
-                                      i === idx ? { ...x, description: e.target.value } : x,
-                                    ),
-                                  }))
-                                  setIsDirty(true)
-                                }}
-                                placeholder="Localized description"
-                                disabled={props.isSaving}
-                              />
-                            </AxisField>
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </AxisSection>
-              </motion.div>
-            </TabsContent>
-
             <TabsContent value="skus" className="mt-0">
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-                <AxisSection
-                  title="SKUs"
-                  description="Variants, inventory hooks, and SKU-level details."
-                  icon={<Package className="h-4 w-4" />}
-                  actions={
-                    <Button
+	                <AxisSection
+	                  title="SKUs"
+	                  description="Variants, availability, and pricing per SKU."
+	                  icon={<Package className="h-4 w-4" />}
+	                  actions={
+	                    <Button
                       type="button"
                       variant="secondary"
                       onClick={() => {
@@ -1776,10 +1775,11 @@ export function ProductEditorV2(props: {
                                       skus: p.skus.map((x, i) => (i === idx ? { ...x, position: e.target.value } : x)),
                                     }))
                                     setIsDirty(true)
-                                  }}
-                                  disabled={props.isSaving}
-                                />
-                              </AxisField>
+		                                              }}
+		                                              disabled={props.isSaving}
+		                                              className="h-10"
+		                                            />
+		                                          </AxisField>
                             </div>
 
                             <div className="grid gap-4 sm:grid-cols-2">
@@ -1823,11 +1823,11 @@ export function ProductEditorV2(props: {
                               </div>
                             </div>
 
-                            {draft.optionDefinitions.length ? (
-                              <div className="space-y-3">
-                                <div className="text-sm font-medium">Option values</div>
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                  {draft.optionDefinitions.map((o) => {
+	                            {draft.optionDefinitions.length ? (
+	                              <div className="space-y-3">
+	                                <div className="text-sm font-medium">Option values</div>
+	                                <div className="grid gap-4 sm:grid-cols-2">
+	                                  {draft.optionDefinitions.map((o) => {
                                     const key = o.key.trim()
                                     if (!key) return null
                                     const value = s.options?.[key] || ''
@@ -1884,13 +1884,492 @@ export function ProductEditorV2(props: {
                                     )
                                   })}
                                 </div>
-                              </div>
-                            ) : null}
+	                              </div>
+	                            ) : null}
 
-                            <div className="space-y-3">
-                              <div className="text-sm font-medium">Shipping & dimensions</div>
-                              <div className="grid gap-4 sm:grid-cols-2">
-                                <AxisField label="Weight">
+	                            <div className="rounded-lg border bg-background/60 p-4 space-y-5">
+	                              <div className="flex flex-wrap items-center justify-between gap-3">
+	                                <div>
+	                                  <div className="text-sm font-medium">Availability & pricing</div>
+	                                  <div className="text-xs text-muted-foreground">
+	                                    Control where this SKU sells, the stock rules, and the price.
+	                                  </div>
+	                                </div>
+	                                <Button
+	                                  type="button"
+	                                  variant="secondary"
+	                                  size="sm"
+	                                  onClick={() => {
+	                                    setDraft((p) => ({
+	                                      ...p,
+	                                      skus: p.skus.map((x, i) =>
+	                                        i === idx ? { ...x, prices: [...x.prices, blankPrice()] } : x,
+	                                      ),
+	                                    }))
+	                                    setIsDirty(true)
+	                                  }}
+	                                  disabled={props.isSaving}
+	                                >
+	                                  <Plus className="h-4 w-4 mr-2" />
+	                                  Add price
+	                                </Button>
+	                              </div>
+
+		                              <div className="grid gap-4 md:grid-cols-2">
+		                                <MultiSelectAdd
+		                                  label="Channels"
+		                                  placeholder={channels.length ? 'Select channel' : 'No channels'}
+		                                  helperText="If empty, all channels are allowed."
+		                                  triggerClassName="h-10"
+		                                  disabled={props.isSaving || channels.length === 0}
+		                                  options={channels.map((c) => ({
+		                                    value: c.code,
+		                                    label: `${c.name} (${c.code})`,
+		                                    disabled: c.isActive === false,
+	                                  }))}
+	                                  values={s.availability.channels}
+	                                  onChange={(next) => {
+	                                    setDraft((p) => ({
+	                                      ...p,
+	                                      skus: p.skus.map((x, i) =>
+	                                        i === idx ? { ...x, availability: { ...x.availability, channels: next } } : x,
+	                                      ),
+	                                    }))
+		                                    setIsDirty(true)
+		                                  }}
+		                                />
+
+		                                <AxisField label="Country" description="Select a country to filter available locations.">
+		                                  <Select
+		                                    value={toCountryCode(s.availability.countries?.[0]) || '__all__'}
+		                                    onValueChange={(value) => {
+		                                      const nextCountryCode = value === '__all__' ? '' : toCountryCode(value)
+		                                      setDraft((p) => ({
+		                                        ...p,
+		                                        skus: p.skus.map((x, i) =>
+		                                          i === idx
+		                                            ? {
+		                                                ...x,
+		                                                availability: {
+		                                                  ...x.availability,
+		                                                  countries: nextCountryCode ? [nextCountryCode] : [],
+		                                                  locations: [],
+		                                                },
+		                                              }
+		                                            : x,
+		                                        ),
+		                                      }))
+		                                      setIsDirty(true)
+		                                    }}
+		                                    disabled={props.isSaving}
+		                                  >
+		                                    <SelectTrigger className="h-10">
+		                                      <SelectValue placeholder="All countries" />
+		                                    </SelectTrigger>
+		                                    <SelectContent>
+		                                      <SelectItem value="__all__">All countries</SelectItem>
+		                                      {availableCountryCodes.map((cc) => (
+		                                        <SelectItem key={cc} value={cc}>
+		                                          {countryLabel(cc)}
+		                                        </SelectItem>
+		                                      ))}
+		                                    </SelectContent>
+		                                  </Select>
+		                                </AxisField>
+
+		                                <div className="md:col-span-2">
+		                                  <MultiSelectAdd
+		                                    label="Locations"
+		                                    triggerClassName="h-10"
+		                                    placeholder={(() => {
+		                                      const cc = toCountryCode(s.availability.countries?.[0])
+		                                      if (!cc) return 'Select country first'
+		                                      const loading = Boolean(locationsLoadingByCountryCode[cc])
+		                                      if (loading) return `Loading ${cc} locations…`
+		                                      const fallback = locations.filter((l) => toCountryCode(l.countryCode) === cc)
+		                                      const fetched = locationsByCountryCode[cc]
+		                                      const list = fetched && fetched.length ? fetched : fallback
+		                                      const opts = buildLocationOptions(list)
+		                                      return opts.length ? 'Select location' : 'No locations'
+		                                    })()}
+		                                    helperText={(() => {
+		                                      const cc = toCountryCode(s.availability.countries?.[0])
+		                                      if (!cc) return 'Pick a country first.'
+		                                      return 'If empty, all locations in the selected country are allowed.'
+		                                    })()}
+		                                    disabled={(() => {
+		                                      const cc = toCountryCode(s.availability.countries?.[0])
+		                                      if (!cc) return true
+		                                      if (props.isSaving) return true
+		                                      if (locationsLoadingByCountryCode[cc]) return true
+		                                      const fallback = locations.filter((l) => toCountryCode(l.countryCode) === cc)
+		                                      const fetched = locationsByCountryCode[cc]
+		                                      const list = fetched && fetched.length ? fetched : fallback
+		                                      return buildLocationOptions(list).length === 0
+		                                    })()}
+		                                    options={(() => {
+		                                      const cc = toCountryCode(s.availability.countries?.[0])
+		                                      if (!cc) return []
+		                                      const fallback = locations.filter((l) => toCountryCode(l.countryCode) === cc)
+		                                      const fetched = locationsByCountryCode[cc]
+		                                      const list = fetched && fetched.length ? fetched : fallback
+		                                      return buildLocationOptions(list).map((l) => ({
+		                                        value: l.value,
+		                                        label: l.label,
+		                                      }))
+		                                    })()}
+		                                    values={s.availability.locations}
+		                                    onChange={(next) => {
+		                                      setDraft((p) => ({
+		                                        ...p,
+	                                        skus: p.skus.map((x, i) =>
+	                                          i === idx
+	                                            ? { ...x, availability: { ...x.availability, locations: next } }
+	                                            : x,
+	                                        ),
+	                                      }))
+		                                      setIsDirty(true)
+		                                    }}
+		                                  />
+		                                </div>
+		                              </div>
+
+	                              <div className="grid gap-4 md:grid-cols-2">
+	                                <AxisField label="Stock type">
+	                                  <Select
+	                                    value={s.availability.stockType}
+	                                    onValueChange={(value) => {
+	                                      setDraft((p) => ({
+	                                        ...p,
+	                                        skus: p.skus.map((x, i) =>
+	                                          i === idx
+	                                            ? {
+	                                                ...x,
+	                                                availability: {
+	                                                  ...x.availability,
+	                                                  stockType: value === 'INFINITE' ? 'INFINITE' : 'FINITE',
+	                                                  ...(value === 'INFINITE' ? { stockQuantity: '' } : {}),
+	                                                },
+	                                              }
+	                                            : x,
+	                                        ),
+	                                      }))
+	                                      setIsDirty(true)
+	                                    }}
+		                                    disabled={props.isSaving}
+		                                  >
+		                                    <SelectTrigger className="h-10">
+		                                      <SelectValue placeholder="Select stock type" />
+		                                    </SelectTrigger>
+	                                    <SelectContent>
+	                                      <SelectItem value="FINITE">Finite</SelectItem>
+	                                      <SelectItem value="INFINITE">Infinite</SelectItem>
+	                                    </SelectContent>
+	                                  </Select>
+	                                </AxisField>
+
+	                                <AxisField
+	                                  label="Stock quantity"
+	                                  description={s.availability.stockType === 'FINITE' ? undefined : 'Not required for infinite stock.'}
+	                                >
+	                                  <Input
+	                                    type="number"
+	                                    min={0}
+	                                    value={s.availability.stockQuantity}
+	                                    onChange={(e) => {
+	                                      setDraft((p) => ({
+	                                        ...p,
+	                                        skus: p.skus.map((x, i) =>
+	                                          i === idx
+	                                            ? { ...x, availability: { ...x.availability, stockQuantity: e.target.value } }
+	                                            : x,
+	                                        ),
+	                                      }))
+	                                      setIsDirty(true)
+	                                    }}
+		                                    disabled={props.isSaving || s.availability.stockType !== 'FINITE'}
+		                                    placeholder={s.availability.stockType === 'FINITE' ? '0' : '—'}
+		                                    className="h-10"
+		                                  />
+		                                </AxisField>
+	                              </div>
+
+	                              <div className="grid gap-4 md:grid-cols-2">
+	                                <AxisField label="Starts at" description="Optional schedule start (UTC).">
+	                                  <Input
+	                                    type="datetime-local"
+	                                    value={toDateTimeLocalValue(s.availability.startAt)}
+	                                    onChange={(e) => {
+	                                      setDraft((p) => ({
+	                                        ...p,
+	                                        skus: p.skus.map((x, i) =>
+	                                          i === idx
+	                                            ? {
+	                                                ...x,
+	                                                availability: { ...x.availability, startAt: fromDateTimeLocalValue(e.target.value) },
+	                                              }
+	                                            : x,
+	                                        ),
+	                                      }))
+	                                      setIsDirty(true)
+		                                    }}
+		                                    disabled={props.isSaving}
+		                                    className="h-10"
+		                                  />
+		                                </AxisField>
+	                                <AxisField label="Ends at" description="Optional schedule end (UTC).">
+	                                  <Input
+	                                    type="datetime-local"
+	                                    value={toDateTimeLocalValue(s.availability.endAt)}
+	                                    onChange={(e) => {
+	                                      setDraft((p) => ({
+	                                        ...p,
+	                                        skus: p.skus.map((x, i) =>
+	                                          i === idx
+	                                            ? {
+	                                                ...x,
+	                                                availability: { ...x.availability, endAt: fromDateTimeLocalValue(e.target.value) },
+	                                              }
+	                                            : x,
+	                                        ),
+	                                      }))
+	                                      setIsDirty(true)
+		                                    }}
+		                                    disabled={props.isSaving}
+		                                    className="h-10"
+		                                  />
+		                                </AxisField>
+	                              </div>
+
+	                              {s.prices.length ? (
+	                                <div className="space-y-4">
+	                                  {s.prices.map((pRow, priceIdx) => {
+	                                    const selectedList = priceLists.find((pl) => pl.id === pRow.priceListId)
+	                                    const currency = selectedList?.currencyCode ? ` ${selectedList.currencyCode}` : ''
+
+	                                    return (
+	                                      <div key={priceIdx} className="rounded-lg border bg-muted/20 p-4 space-y-4">
+	                                        <div className="flex items-center justify-between">
+	                                          <div className="text-sm font-medium">Price #{priceIdx + 1}</div>
+	                                          <Button
+	                                            type="button"
+	                                            variant="ghost"
+	                                            size="sm"
+	                                            onClick={() => {
+	                                              setDraft((p) => ({
+	                                                ...p,
+	                                                skus: p.skus.map((x, i) =>
+	                                                  i === idx ? { ...x, prices: x.prices.filter((_, j) => j !== priceIdx) } : x,
+	                                                ),
+	                                              }))
+	                                              setIsDirty(true)
+	                                            }}
+	                                            disabled={props.isSaving}
+	                                          >
+	                                            <Trash2 className="h-4 w-4" />
+	                                          </Button>
+	                                        </div>
+
+	                                        <div className="grid gap-4 md:grid-cols-3">
+	                                          <AxisField label="Price list" required>
+	                                            <Select
+	                                              value={pRow.priceListId}
+	                                              onValueChange={(value) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx ? { ...r, priceListId: value } : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+	                                              }}
+	                                              disabled={props.isSaving}
+	                                            >
+	                                              <SelectTrigger>
+	                                                <SelectValue placeholder="Select" />
+	                                              </SelectTrigger>
+	                                              <SelectContent>
+	                                                {priceLists.map((pl) => (
+	                                                  <SelectItem key={pl.id} value={pl.id}>
+	                                                    {pl.name} ({pl.currencyCode})
+	                                                  </SelectItem>
+	                                                ))}
+	                                              </SelectContent>
+	                                            </Select>
+	                                          </AxisField>
+
+	                                          <AxisField label={`Unit price${currency}`} required>
+	                                            <Input
+	                                              type="number"
+	                                              value={pRow.unitPrice}
+	                                              onChange={(e) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx ? { ...r, unitPrice: e.target.value } : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+		                                              }}
+		                                              disabled={props.isSaving}
+		                                              className="h-10"
+		                                            />
+		                                          </AxisField>
+
+	                                          <AxisField label={`Compare at${currency}`}>
+	                                            <Input
+	                                              type="number"
+	                                              value={pRow.compareAtPrice}
+	                                              onChange={(e) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx ? { ...r, compareAtPrice: e.target.value } : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+		                                              }}
+		                                              disabled={props.isSaving}
+		                                              className="h-10"
+		                                            />
+		                                          </AxisField>
+	                                        </div>
+
+	                                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+	                                          <AxisField label="Min qty">
+	                                            <Input
+	                                              type="number"
+	                                              min={1}
+	                                              value={pRow.minQuantity}
+	                                              onChange={(e) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx ? { ...r, minQuantity: e.target.value } : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+		                                              }}
+		                                              disabled={props.isSaving}
+		                                              className="h-10"
+		                                            />
+		                                          </AxisField>
+	                                          <AxisField label="Max qty">
+	                                            <Input
+	                                              type="number"
+	                                              min={1}
+	                                              value={pRow.maxQuantity}
+	                                              onChange={(e) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx ? { ...r, maxQuantity: e.target.value } : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+		                                              }}
+		                                              disabled={props.isSaving}
+		                                              className="h-10"
+		                                            />
+		                                          </AxisField>
+	                                          <AxisField label="Valid from">
+	                                            <Input
+	                                              type="datetime-local"
+	                                              value={toDateTimeLocalValue(pRow.validFrom)}
+	                                              onChange={(e) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx
+	                                                              ? { ...r, validFrom: fromDateTimeLocalValue(e.target.value) }
+	                                                              : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+		                                              }}
+		                                              disabled={props.isSaving}
+		                                              className="h-10"
+		                                            />
+		                                          </AxisField>
+	                                          <AxisField label="Valid to">
+	                                            <Input
+	                                              type="datetime-local"
+	                                              value={toDateTimeLocalValue(pRow.validTo)}
+	                                              onChange={(e) => {
+	                                                setDraft((p) => ({
+	                                                  ...p,
+	                                                  skus: p.skus.map((x, i) =>
+	                                                    i === idx
+	                                                      ? {
+	                                                          ...x,
+	                                                          prices: x.prices.map((r, j) =>
+	                                                            j === priceIdx ? { ...r, validTo: fromDateTimeLocalValue(e.target.value) } : r,
+	                                                          ),
+	                                                        }
+	                                                      : x,
+	                                                  ),
+	                                                }))
+	                                                setIsDirty(true)
+	                                              }}
+	                                              disabled={props.isSaving}
+	                                            />
+	                                          </AxisField>
+	                                        </div>
+	                                      </div>
+	                                    )
+	                                  })}
+	                                </div>
+	                              ) : (
+	                                <div className="text-sm text-muted-foreground">No prices for this SKU yet.</div>
+	                              )}
+	                            </div>
+
+	                            <div className="space-y-3">
+	                              <div className="text-sm font-medium">Shipping & dimensions</div>
+	                              <div className="grid gap-4 sm:grid-cols-2">
+	                                <AxisField label="Weight">
                                   <div className="flex gap-2">
                                     <Input
                                       type="number"
@@ -1998,114 +2477,9 @@ export function ProductEditorV2(props: {
                     ))}
                   </Accordion>
                 </AxisSection>
-              </motion.div>
-            </TabsContent>
-
-            <TabsContent value="pricing" className="mt-0">
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-                <AxisSection
-                  title="Product pricing"
-                  description="Top-level prices used when SKU pricing is missing."
-                  icon={<Sparkles className="h-4 w-4" />}
-                  actions={
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setDraft((p) => ({ ...p, prices: [...p.prices, blankPrice()] }))
-                        setIsDirty(true)
-                      }}
-                      disabled={props.isSaving}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add price
-                    </Button>
-                  }
-                >
-                  {draft.prices.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No product prices.</div>
-                  ) : (
-                    <div className="space-y-4">
-                      {draft.prices.map((pRow, idx) => (
-                        <div key={idx} className="rounded-lg border bg-muted/20 p-4 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium">Price #{idx + 1}</div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setDraft((p) => ({ ...p, prices: p.prices.filter((_, i) => i !== idx) }))
-                                setIsDirty(true)
-                              }}
-                              disabled={props.isSaving}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-
-                          <div className="grid gap-4 sm:grid-cols-3">
-                            <AxisField label="Price list" required>
-                              <Select
-                                value={pRow.priceListId}
-                                onValueChange={(value) => {
-                                  setDraft((p) => ({
-                                    ...p,
-                                    prices: p.prices.map((x, i) => (i === idx ? { ...x, priceListId: value } : x)),
-                                  }))
-                                  setIsDirty(true)
-                                }}
-                                disabled={props.isSaving}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {priceLists.map((pl) => (
-                                    <SelectItem key={pl.id} value={pl.id}>
-                                      {pl.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </AxisField>
-                            <AxisField label="Unit price" required>
-                              <Input
-                                type="number"
-                                value={pRow.unitPrice}
-                                onChange={(e) => {
-                                  setDraft((p) => ({
-                                    ...p,
-                                    prices: p.prices.map((x, i) => (i === idx ? { ...x, unitPrice: e.target.value } : x)),
-                                  }))
-                                  setIsDirty(true)
-                                }}
-                                disabled={props.isSaving}
-                              />
-                            </AxisField>
-                            <AxisField label="Compare at">
-                              <Input
-                                type="number"
-                                value={pRow.compareAtPrice}
-                                onChange={(e) => {
-                                  setDraft((p) => ({
-                                    ...p,
-                                    prices: p.prices.map((x, i) => (i === idx ? { ...x, compareAtPrice: e.target.value } : x)),
-                                  }))
-                                  setIsDirty(true)
-                                }}
-                                disabled={props.isSaving}
-                              />
-                            </AxisField>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </AxisSection>
-              </motion.div>
-            </TabsContent>
-          </div>
+	              </motion.div>
+	            </TabsContent>
+	          </div>
 
           <div className="order-3 space-y-4 2xl:sticky 2xl:top-24">
             <Card className="border-muted/60 bg-card/80 shadow-sm">

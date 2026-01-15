@@ -129,7 +129,7 @@ export class CommonUploadController {
 
   @Post('upload')
   @RequirePermissions({
-    module: PermissionModule.SETTINGS,
+    module: PermissionModule.COMMON_UPLOADS,
     permission: 'create',
   })
   @HttpCode(HttpStatus.ACCEPTED)
@@ -307,7 +307,7 @@ export class CommonUploadController {
   }
 
   @Get('upload/jobs/:jobId')
-  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'read' })
+  @RequirePermissions({ module: PermissionModule.COMMON_UPLOADS, permission: 'read' })
   @ApiOperation({ summary: 'Get async upload job status/result' })
   @ApiOkResponse({ description: 'Upload job status' })
   async getUploadJob(@Param('jobId') jobId: string): Promise<ApiResponse<any>> {
@@ -336,7 +336,7 @@ export class CommonUploadController {
   }
 
   @Get('upload/job/:jobId')
-  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'read' })
+  @RequirePermissions({ module: PermissionModule.COMMON_UPLOADS, permission: 'read' })
   @ApiOperation({ summary: 'Alias: Get async upload job status/result' })
   @ApiOkResponse({ description: 'Upload job status' })
   async getUploadJobAlias(
@@ -346,7 +346,7 @@ export class CommonUploadController {
   }
 
   @Post('files/presign')
-  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'read' })
+  @RequirePermissions({ module: PermissionModule.COMMON_UPLOADS, permission: 'read' })
   @ApiOperation({
     summary: 'Generate a signed URL for a stored object key (private access)',
     description:

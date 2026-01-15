@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { apiRequest, ApiError } from '@/lib/api'
+import { apiRequest, ApiError, extractAccessToken, extractRefreshToken } from '@/lib/api'
 import { endpoints } from '@/lib/endpoints'
 
 function safeDecode(value: string) {
@@ -63,7 +63,7 @@ function getSafeCustomerRedirectFromStorage(): string {
     if (decoded.startsWith('//')) return '/'
     if (decoded.includes('://')) return '/'
     if (decoded.startsWith('/login')) return '/'
-    if (decoded.startsWith('/auth/google/callback')) return '/'
+    if (decoded.startsWith('/oauth/google/callback')) return '/'
     return decoded
   } catch {
     return '/'
@@ -117,7 +117,7 @@ export function GoogleOAuthCallbackPage() {
 
     const oauthKey = (() => {
       try {
-        const rawKey = window.localStorage.getItem('admin-google-oauth-key')
+        const rawKey = window.localStorage.getItem('auth-google-oauth-key')
         if (rawKey) {
           const parsed = JSON.parse(rawKey)
           if (typeof parsed === 'string' && parsed.trim()) return parsed.trim()
@@ -135,13 +135,13 @@ export function GoogleOAuthCallbackPage() {
         setStatus('working')
         setMessage('Exchanging sign-in code…')
 
-        const tokens = await apiRequest<{ accessToken: string; refreshToken: string }>(endpoints.auth.oauthExchange, {
+        const tokens = await apiRequest<unknown>(endpoints.auth.oauthExchange, {
           method: 'POST',
-          body: { exchangeCode },
+          body: { exchangeCode, oauthKey },
         })
 
-        const accessToken = tokens?.accessToken
-        const refreshToken = tokens?.refreshToken
+        const accessToken = extractAccessToken(tokens)
+        const refreshToken = extractRefreshToken(tokens)
         if (!accessToken) throw new Error('Login succeeded but no access token was returned.')
 
         if (oauthKey === 'axis') {

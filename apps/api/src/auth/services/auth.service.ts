@@ -400,6 +400,110 @@ export class AuthService {
     return { userId: user.id };
   }
 
+  async assertUserAllowedForGoogleOAuthProfile(
+    userId: string,
+    oauthKey: string,
+  ): Promise<void> {
+    if (!userId || !oauthKey) {
+      throw new UnauthorizedException('Invalid OAuth exchange context');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['role'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (user.isBanned || user.isActive === false) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+
+    const resolved = await this.oauthCredentialsService.getGoogleProfileConfig(oauthKey);
+    const allowedRoleIds = resolved.allowedRoleIds;
+    const allowedDomains = resolved.allowedDomains;
+
+    if (allowedDomains?.length && user.email) {
+      const normalizedEmail = user.email.toLowerCase();
+      const emailDomain = normalizedEmail.split('@')[1]?.toLowerCase() || '';
+      const allowed = allowedDomains
+        .map((d) => String(d).trim().toLowerCase())
+        .filter((d) => d.length > 0);
+      if (allowed.length > 0 && !allowed.includes(emailDomain)) {
+        throw new UnauthorizedException('Account is not allowed for this domain');
+      }
+    }
+
+    if (!allowedRoleIds?.length) {
+      throw new UnauthorizedException('OAuth profile is not configured for any role');
+    }
+
+    const rootRoles = await this.roleRepository.find({
+      where: { id: In(allowedRoleIds) },
+      select: ['id', 'name'],
+    });
+    const rootRoleNames = new Set(
+      (rootRoles || []).map((r) => (r.name || '').toLowerCase()),
+    );
+
+    const isAdminProfile =
+      rootRoleNames.has('admin') || rootRoleNames.has('super admin');
+
+    if (isAdminProfile) {
+      const adminRole = await this.roleRepository.findOne({
+        where: [{ name: 'admin' }, { name: ILike('admin') }],
+      });
+      const superAdminRole = await this.roleRepository.findOne({
+        where: [{ name: 'super admin' }, { name: ILike('super admin') }],
+      });
+
+      if (!adminRole) {
+        throw new BadRequestException('Admin role is not configured');
+      }
+
+      const roleName = user.role?.name?.toLowerCase();
+      const isAdminOrSuper = roleName === 'admin' || roleName === 'super admin';
+      const isAdmin =
+        isAdminOrSuper ||
+        user.roleId === adminRole.id ||
+        (superAdminRole ? user.roleId === superAdminRole.id : false);
+
+      const isAllowedByProfile = await this.isRoleAllowedByRoots(
+        user.roleId,
+        allowedRoleIds,
+      );
+
+      if (!isAdmin || !isAllowedByProfile) {
+        throw new UnauthorizedException('Account is not authorized as admin');
+      }
+
+      return;
+    }
+
+    // Customer profile
+    const customerRole = await this.roleRepository.findOne({
+      where: [{ name: 'customer' }, { name: ILike('customer') }],
+    });
+
+    if (!customerRole) {
+      throw new BadRequestException('Customer role is not configured');
+    }
+
+    const isCustomer = await this.isRoleAllowedByRoots(user.roleId, [
+      customerRole.id,
+    ]);
+    const isAllowedByProfile = await this.isRoleAllowedByRoots(
+      user.roleId,
+      allowedRoleIds,
+    );
+
+    if (!isCustomer || !isAllowedByProfile) {
+      throw new UnauthorizedException('Account is not authorized as customer');
+    }
+  }
+
   async loginWithOAuth(oauthProfile: OAuthAdminProfile, request: Request) {
     const allowedRoleIds =
       ((request as any)?.__oauthAllowedRoleIds ??

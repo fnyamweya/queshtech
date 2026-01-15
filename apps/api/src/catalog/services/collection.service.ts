@@ -436,13 +436,18 @@ export class CollectionService {
 
   private async cleanupExpiredItems() {
     const now = new Date();
+    const expiredCollectionsSubquery = this.collectionRepository
+      .createQueryBuilder('c')
+      .select('c.id')
+      .where('c.validTo IS NOT NULL')
+      .andWhere('c.validTo < :now')
+      .getQuery();
+
     await this.collectionItemRepository
       .createQueryBuilder()
       .delete()
-      .where(
-        `collection_id IN (SELECT id FROM collection WHERE valid_to IS NOT NULL AND valid_to < :now)`,
-        { now },
-      )
+      .where(`collection_id IN (${expiredCollectionsSubquery})`)
+      .setParameter('now', now)
       .execute();
   }
 }

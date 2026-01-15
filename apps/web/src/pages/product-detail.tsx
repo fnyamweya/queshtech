@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { MarkdownContent } from '@/components/common/markdown-content'
 import { Card } from '@/components/ui/card'
 import { Price } from '@/components/commerce/price'
 import { Rating } from '@/components/commerce/rating'
@@ -265,9 +266,7 @@ export function ProductDetailPage({ onAddToCart }: ProductDetailPageProps) {
 
             <div>
               <h3 className="font-semibold mb-2">Product Description</h3>
-              <p className="text-muted-foreground leading-relaxed text-sm">
-                {product.description}
-              </p>
+              <MarkdownContent markdown={product.description} />
             </div>
 
             {Object.entries(groupedVariants).map(([type, variants]) => (
@@ -388,13 +387,9 @@ export function ProductDetailPage({ onAddToCart }: ProductDetailPageProps) {
             <TabsTrigger value="shipping">Shipping</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="description" className="mt-6">
-            <div className="prose max-w-none">
-              <p className="text-muted-foreground leading-relaxed">
-                {product.description}
-              </p>
-            </div>
-          </TabsContent>
+	          <TabsContent value="description" className="mt-6">
+	            <MarkdownContent markdown={product.description} />
+	          </TabsContent>
 
           <TabsContent value="specifications" className="mt-6">
             <div className="grid sm:grid-cols-2 gap-4">

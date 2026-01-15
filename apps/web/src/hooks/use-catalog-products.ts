@@ -230,7 +230,6 @@ export function useCatalogProducts(options?: { token?: string | null; filters?: 
     async (input: {
       title: string
       status: CatalogProductStatus
-      slug?: string
       description?: string
       seoTitle?: string
       seoDescription?: string
@@ -238,28 +237,19 @@ export function useCatalogProducts(options?: { token?: string | null; filters?: 
       brandId?: string | null
       categoryIds?: string[]
       optionDefinitions?: CatalogProductOptionDefinition[]
-      availability?: CatalogProductAvailability
-      images?: string[]
-      translations?: CatalogProductTranslation[]
       skus?: CatalogProductSku[]
-      prices?: CatalogProductPrice[]
       metaJson?: any
     }) => {
       const payload = await api.post<any>(endpoints.catalog.products(), {
         title: input.title,
         status: input.status,
-        slug: input.slug ?? undefined,
         description: input.description ?? undefined,
         seoTitle: input.seoTitle ?? undefined,
         seoDescription: input.seoDescription ?? undefined,
         brandId: input.brandId ?? undefined,
         categoryIds: input.categoryIds ?? undefined,
         optionDefinitions: input.optionDefinitions ?? undefined,
-        availability: input.availability ?? undefined,
-        images: input.images ?? undefined,
-        translations: input.translations ?? undefined,
         skus: input.skus ?? undefined,
-        prices: input.prices ?? undefined,
         externalRef: input.externalRef ?? undefined,
         metaJson: input.metaJson ?? undefined,
       })
