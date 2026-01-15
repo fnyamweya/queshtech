@@ -1,4 +1,4 @@
-# QTech Monorepo
+# QueshTech Monorepo
 
 This repository is a monorepo containing:
 

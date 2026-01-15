@@ -1,5 +1,5 @@
 {
-  "name": "qtech-monorepo",
+  "name": "queshtech",
   "private": true,
   "workspaces": [
     "apps/*"
