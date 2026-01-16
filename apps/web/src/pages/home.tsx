@@ -1,27 +1,31 @@
 import { Link } from 'wouter'
-import { motion } from 'framer-motion'
 import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/commerce/product-card'
-import { HeroCarousel, type HeroSlide } from '@/components/commerce/hero-carousel'
+import { FuturisticHero, type FuturisticHeroSlide } from '@/components/commerce/home/futuristic-hero'
 import { HorizontalScroll } from '@/components/commerce/horizontal-scroll'
 import { Product } from '@/types'
 import { usePublicCollections } from '@/hooks/use-catalog-collections'
 import { usePublicBanners } from '@/hooks/use-banners'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { resolvePhosphorIcon } from '@/lib/phosphor'
+import { usePublicCategories } from '@/hooks/use-catalog-categories'
+import { CategoryCard } from '@/components/commerce/category-card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { BannerCard } from '@/components/commerce/home/banner-card'
+import { HeroOverlapGrid } from '@/components/commerce/home/hero-overlap-grid'
+import { SectionHeading } from '@/components/commerce/home/section-heading'
+import { NewsletterCard } from '@/components/commerce/home/newsletter-card'
 import {
   Truck,
   ShieldCheck,
   ArrowsCounterClockwise,
   Headset,
-  Lightning,
-  Sparkle,
   Fire,
   ArrowRight,
   Percent,
-  Trophy,
 } from '@phosphor-icons/react'
 
 interface HomePageProps {
@@ -29,10 +33,13 @@ interface HomePageProps {
 }
 
 export function HomePage({ onAddToCart }: HomePageProps) {
-  const { landingCollections, isLoading: isCollectionsLoading } = usePublicCollections({ limit: 12 })
-  const { heroBanners, featureBanners } = usePublicBanners()
+  const container = 'container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px]'
 
-  const heroSlides: HeroSlide[] = heroBanners
+  const { landingCollections, isLoading: isCollectionsLoading } = usePublicCollections({ limit: 12 })
+  const { heroBanners, featureBanners, isLoading: isBannersLoading } = usePublicBanners()
+  const { categories, isLoading: isCategoriesLoading } = usePublicCategories({ limit: 8, isActive: true })
+
+  const heroSlides: FuturisticHeroSlide[] = heroBanners
     .filter((banner) => banner.creative?.imageKey || banner.imageUrl)
     .map((banner, idx) => {
       const image = banner.creative?.imageKey || banner.imageUrl || ''
@@ -41,20 +48,54 @@ export function HomePage({ onAddToCart }: HomePageProps) {
 
       return {
         id: banner.id || `hero-${idx}`,
-        title: banner.title || 'Landing spotlight',
+        title: banner.title || 'Tech that feels like the future.',
         subtitle: banner.subtitle || banner.landingSection || 'Curated picks',
         description: banner.description || 'Explore the latest drops and campaigns.',
         image,
         cta: { label: ctaLabel, href: ctaHref },
         secondaryCta: banner.href ? { label: 'View details', href: banner.href } : undefined,
         badge: banner.subtitle || banner.landingSection || 'Featured',
-        badgeColor: 'from-primary to-electric-blue',
-        gradient: 'from-primary via-electric-blue to-cyber-cyan',
       }
     })
 
-  const featuredProducts = landingCollections.flatMap((c) => c.products || []).slice(0, 12)
-  const productsForGrid = featuredProducts
+  const featuredProducts = useMemo(() => {
+    const seen = new Set<string>()
+    const list: Product[] = []
+    for (const c of landingCollections) {
+      for (const p of c.products || []) {
+        if (!p?.id || seen.has(p.id)) continue
+        seen.add(p.id)
+        list.push(p)
+      }
+    }
+    return list
+  }, [landingCollections])
+
+  const productTabs = useMemo(() => {
+    const deals = featuredProducts
+      .filter((p) => (p.compareAtPrice || 0) > p.price || p.badges?.some((b) => b.type === 'sale'))
+      .slice(0, 12)
+
+    const newArrivals = featuredProducts
+      .filter((p) => p.badges?.some((b) => b.type === 'new') || p.tags?.some((t) => t.toLowerCase().includes('new')))
+      .slice(0, 12)
+
+    const trending = [...featuredProducts]
+      .sort((a, b) => {
+        const aScore = (a.rating || 0) * Math.log10(1 + (a.reviewCount || 0))
+        const bScore = (b.rating || 0) * Math.log10(1 + (b.reviewCount || 0))
+        return bScore - aScore
+      })
+      .slice(0, 12)
+
+    const safe = (arr: Product[]) => (arr.length > 0 ? arr : featuredProducts.slice(0, 12))
+
+    return {
+      trending: safe(trending),
+      deals: safe(deals),
+      newArrivals: safe(newArrivals),
+    }
+  }, [featuredProducts])
 
   const bannersByLanding = useMemo(() => {
     const map = new Map<string, typeof featureBanners>()
@@ -68,104 +109,208 @@ export function HomePage({ onAddToCart }: HomePageProps) {
   }, [featureBanners])
 
   const orphanBanners = useMemo(() => featureBanners.filter((b) => !b.landingSection), [featureBanners])
+  const highlightBanners = useMemo(() => orphanBanners.slice(0, 3), [orphanBanners])
 
   return (
     <div className="flex flex-col">
-      <section className="w-full">
-        {heroSlides.length > 0 ? (
-          <HeroCarousel slides={heroSlides} />
-        ) : (
-          <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] py-12 text-center">
-            <p className="text-muted-foreground">No hero banners available.</p>
+      <section className="relative w-full">
+        <FuturisticHero slides={heroSlides.length > 0 ? heroSlides : undefined} />
+
+        <div className={container + ' relative -mt-24 sm:-mt-28 lg:-mt-32 pb-8'}>
+          <HeroOverlapGrid
+            categories={categories}
+            isCategoriesLoading={isCategoriesLoading}
+            trending={productTabs.trending}
+            deals={productTabs.deals}
+            newArrivals={productTabs.newArrivals}
+            isLoading={isCollectionsLoading}
+          />
+        </div>
+        {isBannersLoading ? (
+          <div className="sr-only" aria-live="polite">
+            Loading hero…
           </div>
-        )}
+        ) : null}
       </section>
 
       <section className="border-y border-[color:var(--color-border)] bg-[color:var(--color-muted)] py-8">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px]">
-          <div className="flex items-center justify-center gap-4 overflow-x-auto scrollbar-hide">
-            {[{
-              icon: <Truck size={14} weight="bold" className="text-primary" />, label: 'Lightning Fast', sub: 'Same-day Nairobi', bg: 'bg-primary/10',
-            }, {
-              icon: <ShieldCheck size={14} weight="bold" className="text-neon-green" />, label: 'Secure Checkout', sub: 'M-Pesa & Cards', bg: 'bg-neon-green/10',
-            }, {
-              icon: <ArrowsCounterClockwise size={14} weight="bold" className="text-accent" />, label: 'Easy Returns', sub: '30-day guarantee', bg: 'bg-accent/10',
-            }, {
-              icon: <Headset size={14} weight="bold" className="text-cyber-cyan" />, label: '24/7 Support', sub: 'Always here', bg: 'bg-cyber-cyan/10',
-            }, {
-              icon: <Lightning size={14} weight="fill" className="text-vibrant-orange" />, label: 'Hot Deals', sub: 'Flash sales', bg: 'bg-vibrant-orange/10',
-            }, {
-              icon: <Trophy size={14} weight="fill" className="text-gamer-purple" />, label: 'Top Rated', sub: '5-star picks', bg: 'bg-gamer-purple/10',
-            }, {
-              icon: <Sparkle size={14} weight="fill" className="text-hot-pink" />, label: 'New Arrivals', sub: 'Fresh tech', bg: 'bg-hot-pink/10',
-            }, {
-              icon: <Percent size={14} weight="bold" className="text-success" />, label: 'Best Prices', sub: 'Guaranteed', bg: 'bg-success/10',
-            }].map((item, idx) => (
-              <div className="flex items-center gap-2 shrink-0" key={idx}>
-                <div className={`w-7 h-7 rounded-md flex items-center justify-center ${item.bg}`}>
-                  {item.icon}
+        <div className={container}>
+          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                icon: <Truck size={16} weight="bold" className="text-primary" />,
+                label: 'Fast delivery',
+                sub: 'Same-day Nairobi • Nationwide shipping',
+                bg: 'bg-primary/10',
+              },
+              {
+                icon: <ShieldCheck size={16} weight="bold" className="text-success" />,
+                label: 'Secure payments',
+                sub: 'M-Pesa, cards & wallets',
+                bg: 'bg-success/10',
+              },
+              {
+                icon: <ArrowsCounterClockwise size={16} weight="bold" className="text-accent" />,
+                label: 'Easy returns',
+                sub: '30-day return window',
+                bg: 'bg-accent/10',
+              },
+              {
+                icon: <Headset size={16} weight="bold" className="text-cyber-cyan" />,
+                label: 'Real support',
+                sub: 'Chat, call or WhatsApp',
+                bg: 'bg-cyber-cyan/10',
+              },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-border bg-background/60 p-4">
+                <div className="flex items-start gap-3">
+                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${item.bg}`}>{item.icon}</div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <p className="text-xs text-muted-foreground">{item.sub}</p>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-bold leading-tight">{item.label}</span>
-                  <span className="text-[10px] text-muted-foreground leading-tight">{item.sub}</span>
-                </div>
-                {idx < 7 && <div className="h-6 w-px bg-border shrink-0 ml-3" />}
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {orphanBanners.length > 0 && (
-        <section className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] py-10 sm:py-14">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <p className="text-xs font-semibold uppercase text-primary tracking-wide mb-1">Landing highlights</p>
-              <h2 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
-                Featured banners
-              </h2>
-            </div>
-          </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            {orphanBanners.map((banner) => (
-              <div
-                key={banner.id}
-                className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-background via-background/70 to-muted shadow-sm"
-              >
-                <div className="absolute inset-0">
-                  {banner.imageUrl ? (
-                    <img src={banner.imageUrl} alt={banner.title || 'Banner'} className="w-full h-full object-cover" />
-                  ) : null}
-                  <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/70 to-background/30" />
-                </div>
-                <div className="relative p-6 space-y-3">
-                  {banner.subtitle && (
-                    <Badge variant="secondary" className="uppercase text-[11px] tracking-wide">
-                      {banner.subtitle}
-                    </Badge>
-                  )}
-                  <h3 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
-                    {banner.title || 'Promoted placement'}
-                  </h3>
-                  {banner.description && <p className="text-sm text-muted-foreground max-w-xl">{banner.description}</p>}
-                  <Button asChild size="sm" variant="secondary" className="gap-2">
-                    <Link href={banner.href || '/'}>
-                      {banner.ctaLabel || 'Shop now'}
-                      <ArrowRight size={14} weight="bold" />
-                    </Link>
-                  </Button>
-                </div>
+      <section className={container + ' py-10 sm:py-14'}>
+        <SectionHeading
+          eyebrow="Shop by"
+          title="Categories"
+          description="Browse popular categories with fast filters and clear product comparisons."
+          action={{ label: 'Explore all', href: '/category/all' }}
+        />
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {isCategoriesLoading ? (
+            Array.from({ length: 8 }).map((_, idx) => (
+              <div key={idx} className="rounded-xl border border-border overflow-hidden">
+                <Skeleton className="aspect-[4/3] w-full" />
               </div>
+            ))
+          ) : categories.length === 0 ? (
+            <div className="col-span-full rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
+              No categories available yet.
+            </div>
+          ) : (
+            categories.slice(0, 8).map((category) => <CategoryCard key={category.id} category={category} />)
+          )}
+        </div>
+      </section>
+
+      {highlightBanners.length > 0 ? (
+        <section className={container + ' py-10 sm:py-14'}>
+          <SectionHeading
+            eyebrow="Don’t miss"
+            title="Featured offers"
+            description="Limited-time campaigns and seasonal launches—updated regularly."
+            action={{ label: 'Shop deals', href: '/category/all' }}
+          />
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {highlightBanners.map((banner) => (
+              <BannerCard key={banner.id} banner={banner} />
             ))}
           </div>
         </section>
-      )}
+      ) : null}
 
-      <section className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] py-10 sm:py-14">
-        <div className="space-y-10">
-            {landingCollections.map((collection) => {
+      <section className={container + ' py-10 sm:py-14'}>
+        <SectionHeading
+          eyebrow="Discover"
+          title="Top picks for you"
+          description="Quickly jump into trending products, the best deals, and what’s new."
+          action={{ label: 'Browse products', href: '/category/all' }}
+        />
+
+        <div className="mt-6">
+          <Tabs defaultValue="trending">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="trending">Trending</TabsTrigger>
+              <TabsTrigger value="deals">Deals</TabsTrigger>
+              <TabsTrigger value="newArrivals">New</TabsTrigger>
+            </TabsList>
+
+            {(
+              [
+                { key: 'trending', title: 'Trending', items: productTabs.trending },
+                { key: 'deals', title: 'Deals', items: productTabs.deals },
+                { key: 'newArrivals', title: 'New', items: productTabs.newArrivals },
+              ] as const
+            ).map((tab) => (
+              <TabsContent key={tab.key} value={tab.key} className="mt-6">
+                {isCollectionsLoading ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {Array.from({ length: 6 }).map((_, idx) => (
+                      <div key={idx} className="rounded-xl border border-border overflow-hidden">
+                        <Skeleton className="aspect-square w-full" />
+                        <div className="p-3 space-y-2">
+                          <Skeleton className="h-3 w-16" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-2/3" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : tab.items.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
+                    No products to show yet.
+                  </div>
+                ) : (
+                  <>
+                    <HorizontalScroll className="[&>*]:w-[190px] [&>*]:sm:w-[220px]">
+                      {tab.items.map((product) => (
+                        <ProductCard key={product.id} product={product} variant="compact" onAddToCart={onAddToCart} />
+                      ))}
+                    </HorizontalScroll>
+                    <div className="mt-8 flex justify-center sm:hidden">
+                      <Button asChild variant="outline" className="w-full">
+                        <Link href="/category/all">
+                          Browse all
+                          <ArrowRight size={14} weight="bold" className="ml-2" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      </section>
+
+      <section className={container + ' py-10 sm:py-14'}>
+        <SectionHeading
+          eyebrow="Curated"
+          title="Collections"
+          description="Handpicked bundles and themed drops, updated by our merch team."
+        />
+
+        <div className="mt-8 space-y-12">
+          {isCollectionsLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="rounded-2xl border border-border overflow-hidden">
+                  <Skeleton className="h-40 w-full" />
+                  <div className="p-6 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-6 w-2/3" />
+                    <Skeleton className="h-4 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : landingCollections.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
+              No collections available yet.
+            </div>
+          ) : (
+            landingCollections.map((collection) => {
               const collectionKey = collection.slug || collection.handle || collection.id || ''
-              const collectionBanners = bannersByLanding.get(collectionKey) || bannersByLanding.get(collection.id || '') || []
+              const collectionBanners =
+                bannersByLanding.get(collectionKey) || bannersByLanding.get(collection.id || '') || []
 
               return (
                 <section key={collection.id} className="space-y-5">
@@ -188,17 +333,17 @@ export function HomePage({ onAddToCart }: HomePageProps) {
                           <AvatarFallback>
                             {(() => {
                               const Icon = resolvePhosphorIcon(collection.icon)
-                              return Icon ? <Icon size={18} weight="bold" /> : (collection.title || collection.name || 'C').charAt(0)
+                              return Icon
+                                ? <Icon size={18} weight="bold" />
+                                : (collection.title || collection.name || 'C').charAt(0)
                             })()}
                           </AvatarFallback>
                         </Avatar>
-                        <h2 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+                        <h3 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
                           {collection.title || collection.name || 'Collection'}
-                        </h2>
+                        </h3>
                       </div>
-                      {collection.description ? (
-                        <p className="text-muted-foreground max-w-2xl">{collection.description}</p>
-                      ) : null}
+                      {collection.description ? <p className="text-muted-foreground max-w-2xl">{collection.description}</p> : null}
                     </div>
                     <Button variant="outline" asChild className="hidden sm:flex">
                       <Link href={`/category/${collection.slug || collection.handle || 'collection'}`}>
@@ -208,40 +353,13 @@ export function HomePage({ onAddToCart }: HomePageProps) {
                     </Button>
                   </div>
 
-                  {collectionBanners.length > 0 && (
+                  {collectionBanners.length > 0 ? (
                     <div className="grid md:grid-cols-2 gap-4">
-                      {collectionBanners.map((banner) => (
-                        <div
-                          key={banner.id}
-                          className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-background via-background/70 to-muted shadow-sm"
-                        >
-                          <div className="absolute inset-0">
-                            {banner.imageUrl ? (
-                              <img src={banner.imageUrl} alt={banner.title || 'Banner'} className="w-full h-full object-cover" />
-                            ) : null}
-                            <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/70 to-background/30" />
-                          </div>
-                          <div className="relative p-6 space-y-3">
-                            {banner.subtitle && (
-                              <Badge variant="secondary" className="uppercase text-[11px] tracking-wide">
-                                {banner.subtitle}
-                              </Badge>
-                            )}
-                            <h3 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
-                              {banner.title || 'Promoted placement'}
-                            </h3>
-                            {banner.description && <p className="text-sm text-muted-foreground max-w-xl">{banner.description}</p>}
-                            <Button asChild size="sm" variant="secondary" className="gap-2">
-                              <Link href={banner.href || '/'}>
-                                {banner.ctaLabel || 'Shop now'}
-                                <ArrowRight size={14} weight="bold" />
-                              </Link>
-                            </Button>
-                          </div>
-                        </div>
+                      {collectionBanners.slice(0, 2).map((banner) => (
+                        <BannerCard key={banner.id} banner={banner} />
                       ))}
                     </div>
-                  )}
+                  ) : null}
 
                   {collection.products && collection.products.length > 0 ? (
                     <HorizontalScroll>
@@ -251,124 +369,90 @@ export function HomePage({ onAddToCart }: HomePageProps) {
                     </HorizontalScroll>
                   ) : (
                     <div className="border border-dashed border-border rounded-xl p-6 text-center text-muted-foreground">
-                      {isCollectionsLoading ? 'Loading collection products...' : 'No products in this collection yet.'}
+                      No products in this collection yet.
                     </div>
                   )}
                 </section>
               )
-            })}
+            })
+          )}
         </div>
       </section>
 
-      <section className="bg-accent py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] text-center">
-          <h2
-            className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            🎮 Gaming Zone
-          </h2>
-          <p className="text-lg text-accent-foreground/90 mb-8 max-w-2xl mx-auto">
-            Level up with the latest gaming gear, consoles, and accessories
-          </p>
-          <Button
-            size="lg"
-            variant="secondary"
-            className="bg-white text-accent hover:bg-white/90 font-semibold"
-            asChild
-          >
-            <Link href="/category/gaming">
-              Explore Gaming
-              <Fire size={20} weight="fill" className="ml-2" />
-            </Link>
-          </Button>
-        </div>
-      </section>
-
-      <section className="bg-cyber-cyan py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px]">
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div className="text-white">
-              <Badge className="bg-white/20 text-white border-0 text-xs font-bold px-4 py-1.5 uppercase tracking-wide mb-4">
-                Exclusive Offer
+      <section className={container + ' py-10 sm:py-14'}>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-background to-background p-7">
+            <div
+              className="absolute inset-0 opacity-80"
+              style={{
+                background:
+                  'radial-gradient(900px circle at 20% 10%, color-mix(in oklab, var(--color-primary) 18%, transparent), transparent 55%)',
+              }}
+            />
+            <div className="relative space-y-3">
+              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-4 py-1.5 uppercase tracking-wide">
+                Gaming & creators
               </Badge>
-              <h2
-                className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4"
-                style={{ fontFamily: 'var(--font-display)' }}
-              >
-                Sign Up & Save 15%
+              <h2 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+                Build your setup.
               </h2>
-              <p className="text-lg text-white/90 mb-6">
-                Join QueshTech and get instant access to exclusive deals, early product launches, and special member-only prices.
+              <p className="text-sm text-muted-foreground max-w-xl">
+                Consoles, peripherals, monitors, and performance upgrades—curated for every budget.
               </p>
-              <Button
-                size="lg"
-                variant="secondary"
-                className="bg-white text-cyber-cyan hover:bg-white/90 font-semibold"
-                asChild
-              >
-                <Link href="/signup">
-                  Create Account
-                  <ArrowRight size={20} weight="bold" className="ml-2" />
+              <Button size="lg" className="font-semibold shadow-sm" asChild>
+                <Link href="/category/gaming">
+                  Explore gaming
+                  <Fire size={18} weight="fill" className="ml-2" />
                 </Link>
               </Button>
             </div>
-            <div className="hidden md:block">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-white mb-2">15%</div>
-                    <div className="text-sm text-white/80">Welcome Discount</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-white mb-2">24/7</div>
-                    <div className="text-sm text-white/80">Customer Support</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-white mb-2">FREE</div>
-                    <div className="text-sm text-white/80">Shipping KES 10K+</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl font-bold text-white mb-2">30</div>
-                    <div className="text-sm text-white/80">Days Returns</div>
-                  </div>
-                </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-accent/10 via-background to-background p-7">
+            <div
+              className="absolute inset-0 opacity-80"
+              style={{
+                background:
+                  'radial-gradient(900px circle at 20% 10%, color-mix(in oklab, var(--color-accent) 18%, transparent), transparent 55%)',
+              }}
+            />
+            <div className="relative space-y-3">
+              <Badge className="bg-accent/10 text-accent border-accent/20 text-xs font-bold px-4 py-1.5 uppercase tracking-wide">
+                Member pricing
+              </Badge>
+              <h2 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+                Sign up, save more.
+              </h2>
+              <p className="text-sm text-muted-foreground max-w-xl">
+                Create an account for early-access deals, faster checkout, and tailored recommendations.
+              </p>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button size="lg" className="font-semibold shadow-sm" asChild>
+                  <Link href="/signup">
+                    Create account
+                    <ArrowRight size={18} weight="bold" className="ml-2" />
+                  </Link>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="bg-background/60 hover:bg-background"
+                  asChild
+                >
+                  <Link href="/login">Sign in</Link>
+                </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                <Percent size={12} weight="bold" className="inline -mt-0.5 mr-1" />
+                Welcome discounts and seasonal promos apply automatically when available.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] py-10 sm:py-16">
-        <div className="mb-6 sm:mb-8">
-          <h2
-            className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Featured Products
-          </h2>
-          <p className="text-muted-foreground">
-            Handpicked items from our latest collection
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-              {productsForGrid.length === 0 ? (
-                <div className="col-span-full text-center text-muted-foreground py-10">No featured products available.</div>
-              ) : (
-                productsForGrid.map((product) => (
-                  <ProductCard key={product.id} product={product} variant="compact" onAddToCart={onAddToCart} />
-                ))
-              )}
-            </div>
-
-            {productsForGrid.length > 0 && (
-              <div className="text-center mt-10">
-                <Button size="lg" asChild>
-                  <Link href="/category/all">Explore All Products</Link>
-                </Button>
-              </div>
-            )}
+      <section className={container + ' pb-14'}>
+        <NewsletterCard />
       </section>
     </div>
   )

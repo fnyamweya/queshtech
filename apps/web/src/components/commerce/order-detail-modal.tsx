@@ -7,7 +7,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { GamerButton } from '@/components/ui/gamer-button'
+import { Button } from '@/components/ui/button'
 import { 
   Package, 
   Truck, 
@@ -28,11 +28,11 @@ interface OrderDetailModalProps {
 }
 
 const statusColors = {
-  pending: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
-  processing: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30',
-  shipped: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30',
-  delivered: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30',
-  cancelled: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30',
+  pending: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400',
+  processing: 'bg-blue-500/10 text-blue-700 dark:text-blue-400',
+  shipped: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
+  delivered: 'bg-green-500/10 text-green-700 dark:text-green-400',
+  cancelled: 'bg-red-500/10 text-red-700 dark:text-red-400',
 }
 
 const statusIcons = {
@@ -56,6 +56,11 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
   }
 
   const StatusIcon = statusIcons[order.status]
+  const hasShipping =
+    Boolean(order.shippingAddress?.address1) ||
+    Boolean(order.shippingAddress?.city) ||
+    Boolean(order.shippingAddress?.phone)
+  const hasPayment = Boolean(order.paymentMethod?.label) || Boolean(order.paymentMethod?.type)
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -76,7 +81,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                 <div className="text-sm font-mono text-muted-foreground">{order.orderNumber}</div>
               </div>
             </div>
-            <Badge className={cn('gap-2 px-3 py-1.5 border', statusColors[order.status])}>
+            <Badge className={cn('gap-2 px-3 py-1.5 border-0', statusColors[order.status])}>
               <StatusIcon size={16} weight="bold" />
               {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
             </Badge>
@@ -90,7 +95,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
             transition={{ delay: 0.1 }}
             className="grid grid-cols-2 gap-4"
           >
-            <div className="p-4 rounded-xl bg-muted/50 border">
+            <div className="p-4 rounded-xl bg-muted/40">
               <div className="flex items-center gap-2 mb-2">
                 <Calendar size={18} weight="bold" className="text-primary" />
                 <span className="text-sm font-medium">Order Date</span>
@@ -103,7 +108,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                 })}
               </div>
             </div>
-            <div className="p-4 rounded-xl bg-muted/50 border">
+            <div className="p-4 rounded-xl bg-muted/40">
               <div className="flex items-center gap-2 mb-2">
                 <Package size={18} weight="bold" className="text-primary" />
                 <span className="text-sm font-medium">Items</span>
@@ -131,7 +136,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.2 + index * 0.05 }}
-                    className="flex gap-4 p-3 rounded-lg border bg-card"
+                    className="flex gap-4 p-3 rounded-lg bg-muted/30"
                   >
                     {item.product.images && item.product.images.length > 0 && (
                       <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
@@ -168,37 +173,46 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
             transition={{ delay: 0.3 }}
             className="grid md:grid-cols-2 gap-4"
           >
-            <div className="p-4 rounded-xl border bg-card">
+            <div className="p-4 rounded-xl bg-muted/30">
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <MapPin size={18} weight="bold" className="text-primary" />
                 Shipping Address
               </h3>
-              {order.shippingAddress && (
+              {hasShipping ? (
                 <div className="text-sm text-muted-foreground space-y-1">
                   <div className="font-medium text-foreground">
-                    {order.shippingAddress.firstName} {order.shippingAddress.lastName}
+                    {order.shippingAddress?.firstName} {order.shippingAddress?.lastName}
                   </div>
-                  <div>{order.shippingAddress.address1}</div>
-                  {order.shippingAddress.address2 && <div>{order.shippingAddress.address2}</div>}
-                  <div>
-                    {order.shippingAddress.city}, {order.shippingAddress.state}
-                  </div>
-                  <div>{order.shippingAddress.postalCode}</div>
-                  {order.shippingAddress.phone && <div className="pt-1">{order.shippingAddress.phone}</div>}
+                  {order.shippingAddress?.address1 ? <div>{order.shippingAddress.address1}</div> : null}
+                  {order.shippingAddress?.address2 ? <div>{order.shippingAddress.address2}</div> : null}
+                  {order.shippingAddress?.city || order.shippingAddress?.state ? (
+                    <div>
+                      {order.shippingAddress?.city || '—'}
+                      {order.shippingAddress?.state ? `, ${order.shippingAddress.state}` : ''}
+                    </div>
+                  ) : null}
+                  {order.shippingAddress?.postalCode ? <div>{order.shippingAddress.postalCode}</div> : null}
+                  {order.shippingAddress?.phone ? <div className="pt-1">{order.shippingAddress.phone}</div> : null}
                 </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Not available yet.</div>
               )}
             </div>
 
-            <div className="p-4 rounded-xl border bg-card">
+            <div className="p-4 rounded-xl bg-muted/30">
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <CreditCard size={18} weight="bold" className="text-primary" />
                 Payment Method
               </h3>
-              {order.paymentMethod && (
+              {hasPayment ? (
                 <div className="text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground capitalize">{order.paymentMethod.type}</div>
-                  <div className="mt-1">{order.paymentMethod.label}</div>
+                  {order.paymentMethod?.type ? (
+                    <div className="font-medium text-foreground capitalize">{order.paymentMethod.type}</div>
+                  ) : null}
+                  {order.paymentMethod?.label ? <div className="mt-1">{order.paymentMethod.label}</div> : null}
                 </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Not available yet.</div>
               )}
             </div>
           </motion.div>
@@ -209,7 +223,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="p-5 rounded-xl bg-gradient-to-br from-primary/5 to-accent/5 border border-primary/20"
+            className="p-5 rounded-xl bg-gradient-to-br from-primary/5 to-accent/5"
           >
             <h3 className="font-semibold mb-4">Order Summary</h3>
             <div className="space-y-2.5">
@@ -240,13 +254,13 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
           </motion.div>
 
           <div className="flex gap-3 pt-2">
-            <GamerButton variant="primary" className="flex-1" onClick={() => window.open(`/track-order?order=${order.orderNumber}`, '_blank')}>
+            <Button className="flex-1" onClick={() => window.open(`/track-order?order=${order.orderNumber}`, '_blank')}>
               <Truck size={18} weight="bold" />
               Track Order
-            </GamerButton>
-            <GamerButton variant="secondary" className="flex-1" onClick={onClose}>
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={onClose}>
               Close
-            </GamerButton>
+            </Button>
           </div>
         </div>
       </DialogContent>

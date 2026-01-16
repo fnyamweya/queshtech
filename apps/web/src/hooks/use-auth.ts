@@ -210,10 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
 
       // Best-effort: get canonical profile for navbar + /profile.
-      try {
-        if (tokens.accessToken) await getProfileWithToken(tokens.accessToken)
-        else await getProfile()
-      } catch {}
+      await (tokens.accessToken ? getProfileWithToken(tokens.accessToken) : getProfile()).catch(() => null)
 
       return { success: true }
     } catch (error) {
@@ -247,10 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }))
 
       // Best-effort: overwrite with canonical profile.
-      try {
-        if (tokens.accessToken) await getProfileWithToken(tokens.accessToken)
-        else await getProfile()
-      } catch {}
+      await (tokens.accessToken ? getProfileWithToken(tokens.accessToken) : getProfile()).catch(() => null)
       return { success: true }
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Login failed. Please check your credentials.'

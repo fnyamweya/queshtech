@@ -47,6 +47,7 @@ import { AdminSettingsWhatsappTemplatesPage } from '@/pages/admin/settings-whats
 import { AdminSettingsSmsPage } from '@/pages/admin/settings-sms'
 import { AdminSettingsR2Page } from '@/pages/admin/settings-s3'
 import { AdminSettingsOAuthPage } from '@/pages/admin/settings-oauth'
+import { AdminSettingsAlgoliaPage } from '@/pages/admin/settings-algolia'
 import { AdminChannelsPage } from '@/pages/admin/channels'
 import { AdminTasksPage } from '@/pages/admin/tasks'
 import { AdminChatPage } from '@/pages/admin/chat'
@@ -184,6 +185,9 @@ function App() {
             <Route path="/axis/settings/oauth">
               <AdminSettingsOAuthPage />
             </Route>
+            <Route path="/axis/settings/algolia">
+              <AdminSettingsAlgoliaPage />
+            </Route>
             <Route path="/axis/settings/landing">
               <AdminCollectionsPage />
             </Route>
@@ -314,6 +318,7 @@ function App() {
               cart={cart}
               onQuantityChange={updateQuantity}
               onRemove={removeFromCart}
+              onAddToCart={addToCart}
             />
 
             <ScrollToTop />

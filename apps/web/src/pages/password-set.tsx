@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
-import { AuthCard } from '@/components/auth/auth-card'
-import { BoldButton } from '@/components/auth/bold-button'
-import { BoldInput } from '@/components/auth/bold-input'
+import { AuthShell } from '@/components/auth/auth-shell'
+import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { ArrowLeft, ArrowRight } from '@phosphor-icons/react'
 import { ApiError } from '@/lib/api'
@@ -92,90 +94,84 @@ export function PasswordSetPage() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-        <AuthCard title="Password Updated" description="Your password has been changed successfully">
-          <div className="space-y-6">
-            <div className="bg-primary/10 border-2 border-primary/20 p-6" style={{ borderRadius: 0 }}>
-              <p className="text-sm text-foreground leading-relaxed">
-                Your password has been updated. You can now sign in using your new password.
-              </p>
-            </div>
+      <AuthShell title="Password updated" description="Your password has been changed successfully.">
+        <div className="grid gap-5">
+          <AuthNotice tone="primary">
+            You can now sign in using your new password.
+          </AuthNotice>
 
-            <div className="space-y-3">
-              <BoldButton
-                variant="primary"
-                onClick={() => setLocation('/login')}
-                icon={<ArrowRight size={20} weight="bold" />}
-              >
-                Go to Sign In
-              </BoldButton>
-
-              <BoldButton type="button" variant="outline" onClick={() => setLocation('/')}
-              >
-                Back to Home
-              </BoldButton>
-            </div>
+          <div className="grid gap-3">
+            <Button className="h-11 w-full gap-2" onClick={() => setLocation('/login')}>
+              Go to sign in
+              <ArrowRight size={16} weight="bold" />
+            </Button>
+            <Button variant="outline" className="h-11 w-full" onClick={() => setLocation('/')}>
+              Back to home
+            </Button>
           </div>
-        </AuthCard>
-      </div>
+        </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-      <AuthCard title="Set New Password" description="Create a new password for your account">
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {errors.token && (
-            <div className="bg-destructive/10 border-2 border-destructive/20 p-4" style={{ borderRadius: 0 }}>
-              <p className="text-sm text-foreground">{errors.token}</p>
-            </div>
-          )}
+    <AuthShell title="Set a new password" description="Create a new password for your account.">
+      <form onSubmit={handleSubmit} className="grid gap-5">
+        {errors.token ? (
+          <AuthNotice tone="destructive">
+            <span className="font-semibold text-destructive">{errors.token}</span>
+          </AuthNotice>
+        ) : null}
 
-          <BoldInput
-            label="New Password"
+        <div className="grid gap-2">
+          <Label htmlFor="password">New password</Label>
+          <Input
+            id="password"
             type="password"
             required
             value={formData.password}
             onChange={(e) => handleChange('password', e.target.value)}
-            error={errors.password}
             placeholder="••••••••"
             autoComplete="new-password"
+            aria-invalid={Boolean(errors.password) || undefined}
           />
+          {errors.password ? <p className="text-sm font-medium text-destructive">{errors.password}</p> : null}
+        </div>
 
-          <BoldInput
-            label="Confirm New Password"
+        <div className="grid gap-2">
+          <Label htmlFor="confirmPassword">Confirm new password</Label>
+          <Input
+            id="confirmPassword"
             type="password"
             required
             value={formData.confirmPassword}
             onChange={(e) => handleChange('confirmPassword', e.target.value)}
-            error={errors.confirmPassword}
             placeholder="••••••••"
             autoComplete="new-password"
+            aria-invalid={Boolean(errors.confirmPassword) || undefined}
           />
+          {errors.confirmPassword ? (
+            <p className="text-sm font-medium text-destructive">{errors.confirmPassword}</p>
+          ) : null}
+        </div>
 
-          <div className="bg-muted/50 border-2 border-border p-4" style={{ borderRadius: 0 }}>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Use at least 8 characters. For best security, avoid reusing old passwords.
-            </p>
-          </div>
+        <AuthNotice className="text-muted-foreground">
+          Use at least <span className="font-semibold text-foreground">8 characters</span>. For best security, avoid reusing old passwords.
+        </AuthNotice>
 
-          <div className="space-y-3 pt-2">
-            <BoldButton
-              type="submit"
-              variant="primary"
-              isLoading={isLoading}
-              icon={<ArrowRight size={20} weight="bold" />}
-            >
-              Update Password
-            </BoldButton>
+        <div className="grid gap-3">
+          <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
+            {isLoading ? <AuthSpinner /> : null}
+            Update password
+            <ArrowRight size={16} weight="bold" />
+          </Button>
 
-            <BoldButton type="button" variant="outline" onClick={() => setLocation('/forgot-password')}>
-              <ArrowLeft size={20} weight="bold" />
-              Back
-            </BoldButton>
-          </div>
-        </form>
-      </AuthCard>
-    </div>
+          <Button type="button" variant="outline" className="h-11 w-full gap-2" onClick={() => setLocation('/forgot-password')}>
+            <ArrowLeft size={16} weight="bold" />
+            Back
+          </Button>
+        </div>
+      </form>
+    </AuthShell>
   )
 }

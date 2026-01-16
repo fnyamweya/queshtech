@@ -1,39 +1,41 @@
 import { Link } from 'wouter'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  GameController,
-  DeviceMobile,
-  Lightning,
-  Fire,
-  TrendUp,
-  Tag,
-  ArrowRight,
-  Sparkle,
-} from '@phosphor-icons/react'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { usePublicCategories } from '@/hooks/use-catalog-categories'
 import { resolvePhosphorIcon } from '@/lib/phosphor'
+import {
+  ArrowRight,
+  DeviceMobile,
+  Fire,
+  GameController,
+  Lightning,
+  Sparkle,
+  Tag,
+  TrendUp,
+  X,
+} from '@phosphor-icons/react'
 
 const featuredBanners = [
   {
     id: 1,
     title: 'RTX 4090 Ti',
-    subtitle: 'Ultimate Gaming Power',
+    subtitle: 'Ultimate gaming performance',
     discount: '15% OFF',
-    gradient: 'from-gamer-purple via-electric-blue to-cyber-cyan',
     icon: Lightning,
     href: '/category/gaming',
+    tone: 'primary' as const,
   },
   {
     id: 2,
     title: 'Galaxy S25 Ultra',
-    subtitle: 'Pre-Order Now',
+    subtitle: 'Pre-order now',
     badge: 'NEW',
-    gradient: 'from-hot-pink via-accent to-gamer-purple',
     icon: Sparkle,
     href: '/category/smartphones-tablets',
+    tone: 'accent' as const,
   },
 ]
 
@@ -47,177 +49,188 @@ export function MegaMenu({ isOpen, onClose }: MegaMenuProps) {
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {isOpen ? (
         <>
           <motion.div
+            key="overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="fixed inset-0 bg-background/60 backdrop-blur-sm z-40"
+            className="fixed inset-0 z-40 bg-gradient-to-b from-transparent via-black/10 to-black/25"
             onClick={onClose}
           />
+
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            key="panel"
+            initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="absolute left-0 right-0 top-full z-50 border-b bg-card/95 backdrop-blur-xl shadow-2xl"
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+            className={cn(
+              'absolute left-0 right-0 top-full z-50',
+              'border-b border-border bg-background shadow-2xl'
+            )}
           >
-            <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] py-6">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div className="lg:col-span-8">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
+            <ScrollArea className="max-h-[min(36rem,calc(100vh-7rem))]">
+              <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px] py-4">
+                <div className="flex items-center justify-between gap-4 pb-3">
+                  <div className="flex items-center gap-2">
                     <Fire size={14} weight="fill" className="text-primary" />
-                    Categories
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                    {categories.map((category, index) => {
-                      const Icon = resolvePhosphorIcon(category.icon) || DeviceMobile
-                      return (
-                        <motion.div
-                          key={category.id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.02, duration: 0.2 }}
-                        >
-                          <Link href={`/category/${category.slug}`} onClick={onClose}>
-                            <button className="group w-full text-left p-3 rounded-lg border border-border/50 bg-background/50 hover:bg-accent/10 hover:border-primary/50 transition-all duration-200 hover:shadow-md hover:shadow-primary/5">
-                              <div className="flex items-center gap-2.5">
-                                <div className="p-1.5 rounded-md bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-200">
+                    <h2 className="text-sm font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
+                      Browse
+                    </h2>
+                    <span className="hidden sm:inline text-xs text-muted-foreground">
+                      Categories, deals, and collections
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onClose} aria-label="Close menu">
+                    <X size={18} weight="bold" />
+                  </Button>
+                </div>
+
+                <div className="grid gap-5 lg:grid-cols-12">
+                  <div className="lg:col-span-8">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                      {categories.map((category) => {
+                        const Icon = resolvePhosphorIcon(category.icon) || DeviceMobile
+                        return (
+                          <Link key={category.id} href={`/category/${category.slug}`} onClick={onClose}>
+                            <div className="group rounded-xl border border-border/60 bg-background/60 p-3 transition-colors hover:bg-primary/5 hover:border-primary/30">
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                                   <Icon size={18} weight="bold" />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-sm mb-0.5 group-hover:text-primary transition-colors truncate">
-                                    {category.name}
-                                  </div>
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold truncate">{category.name}</div>
                                   <div className="text-xs text-muted-foreground">
                                     {typeof category.productCount === 'number' ? `${category.productCount}+ items` : 'Browse'}
                                   </div>
                                 </div>
                               </div>
-                            </button>
+                            </div>
                           </Link>
-                        </motion.div>
-                      )
-                    })}
-                  </div>
-                  
-                  <div className="mt-5 pt-5 border-t border-border/50">
-                    <div className="flex flex-wrap gap-2">
+                        )
+                      })}
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <Link href="/category/all" onClick={onClose}>
+                        <Button size="sm" variant="outline" className="h-9 rounded-full gap-2 bg-background/60">
+                          <Tag size={14} weight="bold" />
+                          Shop all
+                        </Button>
+                      </Link>
                       <Link href="/deals" onClick={onClose}>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-2 border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 text-amber-700 dark:text-amber-400 h-8"
-                        >
+                        <Button size="sm" variant="outline" className="h-9 rounded-full gap-2 bg-background/60">
                           <Lightning size={14} weight="fill" />
-                          Flash Deals
+                          Deals
                         </Button>
                       </Link>
                       <Link href="/trending" onClick={onClose}>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-2 border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10 text-orange-700 dark:text-orange-400 h-8"
-                        >
-                          <TrendUp size={14} weight="bold" />
+                        <Button size="sm" variant="outline" className="h-9 rounded-full gap-2 bg-background/60">
+                          <TrendUp size={14} weight="fill" />
                           Trending
                         </Button>
                       </Link>
                       <Link href="/category/gaming" onClick={onClose}>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="gap-2 border-gamer-purple/30 bg-gamer-purple/5 hover:bg-gamer-purple/10 text-gamer-purple h-8"
-                        >
+                        <Button size="sm" variant="outline" className="h-9 rounded-full gap-2 bg-background/60">
                           <GameController size={14} weight="fill" />
-                          Gaming Hub
+                          Gaming
                         </Button>
                       </Link>
                     </div>
                   </div>
-                </div>
 
-                <div className="lg:col-span-4 space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4 flex items-center gap-2">
-                    <Sparkle size={14} weight="fill" className="text-accent" />
-                    Featured
-                  </h3>
-                  
-                  {featuredBanners.map((banner, index) => {
-                    const Icon = banner.icon
-                    return (
-                      <motion.div
-                        key={banner.id}
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 + index * 0.05, duration: 0.2 }}
-                      >
-                        <Link href={banner.href} onClick={onClose}>
-                          <div
-                            className={cn(
-                              'group relative overflow-hidden rounded-xl p-5 cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-xl',
-                              'bg-gradient-to-br',
-                              banner.gradient
-                            )}
-                          >
-                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.1),transparent)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                            
-                            <div className="relative z-10">
-                              <div className="flex items-start justify-between mb-2.5">
-                                <div className="p-2 rounded-lg bg-white/20 backdrop-blur-sm">
-                                  <Icon size={20} weight="bold" className="text-white" />
+                  <div className="lg:col-span-4 space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Sparkle size={14} weight="fill" className="text-accent" />
+                      Featured
+                    </h3>
+
+                    {featuredBanners.map((banner, index) => {
+                      const Icon = banner.icon
+                      const tone = banner.tone
+                      return (
+                        <motion.div
+                          key={banner.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.05 + index * 0.05, duration: 0.18 }}
+                        >
+                          <Link href={banner.href} onClick={onClose}>
+                            <div className="group relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-background via-background to-muted p-4 transition-shadow hover:shadow-lg">
+                              <div
+                                className="absolute inset-0 opacity-70"
+                                style={{
+                                  background:
+                                    tone === 'primary'
+                                      ? 'radial-gradient(700px circle at 20% 10%, color-mix(in oklab, var(--color-primary) 16%, transparent), transparent 55%)'
+                                      : 'radial-gradient(700px circle at 20% 10%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent 55%)',
+                                }}
+                              />
+
+                              <div className="relative">
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div
+                                    className={cn(
+                                      'h-10 w-10 rounded-xl flex items-center justify-center border',
+                                      tone === 'primary'
+                                        ? 'bg-primary/10 text-primary border-primary/15'
+                                        : 'bg-accent/10 text-accent border-accent/15'
+                                    )}
+                                  >
+                                    <Icon size={18} weight="bold" />
+                                  </div>
+                                  {banner.discount ? (
+                                    <Badge className="bg-primary text-primary-foreground border-0 text-xs font-bold">
+                                      {banner.discount}
+                                    </Badge>
+                                  ) : null}
+                                  {banner.badge ? (
+                                    <Badge variant="secondary" className="text-xs font-bold">
+                                      {banner.badge}
+                                    </Badge>
+                                  ) : null}
                                 </div>
-                                {banner.discount && (
-                                  <Badge className="bg-white/90 text-foreground font-bold shadow-lg text-xs">
-                                    {banner.discount}
-                                  </Badge>
-                                )}
-                                {banner.badge && (
-                                  <Badge className="bg-neon-green text-neon-green-foreground font-bold shadow-lg animate-pulse text-xs">
-                                    {banner.badge}
-                                  </Badge>
-                                )}
-                              </div>
-                              
-                              <h4 className="text-lg font-bold text-white mb-1 group-hover:translate-x-0.5 transition-transform">
-                                {banner.title}
-                              </h4>
-                              <p className="text-white/90 text-sm mb-3">{banner.subtitle}</p>
-                              
-                              <div className="flex items-center gap-2 text-white text-sm font-medium group-hover:gap-2.5 transition-all">
-                                <span>Shop Now</span>
-                                <ArrowRight size={14} weight="bold" className="group-hover:translate-x-1 transition-transform" />
+
+                                <h4 className="text-base font-bold mb-1 group-hover:translate-x-0.5 transition-transform">
+                                  {banner.title}
+                                </h4>
+                                <p className="text-sm text-muted-foreground mb-3">{banner.subtitle}</p>
+
+                                <div className="flex items-center gap-2 text-sm font-semibold">
+                                  <span>Shop now</span>
+                                  <ArrowRight size={14} weight="bold" className="group-hover:translate-x-1 transition-transform" />
+                                </div>
                               </div>
                             </div>
-                            
-                            <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
-                          </div>
-                        </Link>
-                      </motion.div>
-                    )
-                  })}
+                          </Link>
+                        </motion.div>
+                      )
+                    })}
 
-                  <div className="relative rounded-lg border border-border/50 bg-muted/30 p-4 overflow-hidden">
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-primary/10 rounded-full blur-xl" />
-                    <div className="relative z-10">
-                      <Tag size={18} weight="bold" className="text-primary mb-2" />
-                      <h4 className="font-semibold text-sm mb-1">Student Discount</h4>
-                      <p className="text-xs text-muted-foreground mb-2.5">
-                        Get 10% off with valid student ID
-                      </p>
-                      <Button size="sm" variant="outline" className="w-full h-8 text-xs">
-                        Learn More
+                    <div className="relative rounded-2xl border border-border bg-background/60 p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                          <Tag size={16} weight="bold" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold">Student discount</div>
+                          <div className="text-xs text-muted-foreground">Get 10% off with a valid student ID.</div>
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" className="w-full mt-3 h-9 rounded-full bg-background/60">
+                        Learn more
                       </Button>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </ScrollArea>
           </motion.div>
         </>
-      )}
+      ) : null}
     </AnimatePresence>
   )
 }

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
-import { AuthCard } from '@/components/auth/auth-card'
-import { BoldButton } from '@/components/auth/bold-button'
-import { BoldInput } from '@/components/auth/bold-input'
+import { AuthShell } from '@/components/auth/auth-shell'
+import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { ArrowLeft, ArrowRight } from '@phosphor-icons/react'
 import { ApiError } from '@/lib/api'
@@ -95,117 +97,102 @@ export function InvitePage() {
 
   if (status === 'accepted') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-        <AuthCard title="Account Activated" description="Your invitation has been accepted">
-          <div className="space-y-6">
-            <div className="bg-primary/10 border-2 border-primary/20 p-6" style={{ borderRadius: 0 }}>
-              <p className="text-sm text-foreground leading-relaxed">
-                Your account is ready. You can now sign in.
-              </p>
-            </div>
+      <AuthShell title="Account activated" description="Your invitation has been accepted.">
+        <div className="grid gap-5">
+          <AuthNotice tone="primary">
+            Your account is ready. You can now sign in.
+          </AuthNotice>
 
-            <div className="space-y-3">
-              <BoldButton
-                variant="primary"
-                onClick={() => setLocation('/axis/login')}
-                icon={<ArrowRight size={20} weight="bold" />}
-              >
-                Go to Admin Sign In
-              </BoldButton>
-
-              <BoldButton variant="outline" onClick={() => setLocation('/')}>Back to Home</BoldButton>
-            </div>
+          <div className="grid gap-3">
+            <Button className="h-11 w-full gap-2" onClick={() => setLocation('/axis/login')}>
+              Go to admin sign in
+              <ArrowRight size={16} weight="bold" />
+            </Button>
+            <Button variant="outline" className="h-11 w-full" onClick={() => setLocation('/')}>
+              Back to home
+            </Button>
           </div>
-        </AuthCard>
-      </div>
+        </div>
+      </AuthShell>
     )
   }
 
   if (status === 'declined') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-        <AuthCard title="Invitation Declined" description="This invitation is no longer usable">
-          <div className="space-y-6">
-            <div className="bg-muted/50 border-2 border-border p-6" style={{ borderRadius: 0 }}>
-              <p className="text-sm text-foreground leading-relaxed">
-                If this was a mistake, please ask the admin to send a new invitation.
-              </p>
-            </div>
+      <AuthShell title="Invitation declined" description="This invitation is no longer usable.">
+        <div className="grid gap-5">
+          <AuthNotice className="text-muted-foreground">
+            If this was a mistake, please ask the admin to send a new invitation.
+          </AuthNotice>
 
-            <div className="space-y-3">
-              <BoldButton
-                variant="primary"
-                onClick={() => setLocation('/')}
-                icon={<ArrowRight size={20} weight="bold" />}
-              >
-                Back to Home
-              </BoldButton>
-            </div>
-          </div>
-        </AuthCard>
-      </div>
+          <Button className="h-11 w-full gap-2" onClick={() => setLocation('/')}>
+            Back to home
+            <ArrowRight size={16} weight="bold" />
+          </Button>
+        </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-      <AuthCard title="You're Invited" description="Set a password to activate your account">
-        <form onSubmit={acceptInvite} className="space-y-5">
-          {errors.token && (
-            <div className="bg-destructive/10 border-2 border-destructive/20 p-4" style={{ borderRadius: 0 }}>
-              <p className="text-sm text-foreground">{errors.token}</p>
-            </div>
-          )}
+    <AuthShell title="You’re invited" description="Set a password to activate your account.">
+      <form onSubmit={acceptInvite} className="grid gap-5">
+        {errors.token ? (
+          <AuthNotice tone="destructive">
+            <span className="font-semibold text-destructive">{errors.token}</span>
+          </AuthNotice>
+        ) : null}
 
-          <BoldInput
-            label="Password"
+        <div className="grid gap-2">
+          <Label htmlFor="password">Password</Label>
+          <Input
+            id="password"
             type="password"
             required
             value={formData.password}
             onChange={(e) => handleChange('password', e.target.value)}
-            error={errors.password}
             placeholder="••••••••"
             autoComplete="new-password"
+            aria-invalid={Boolean(errors.password) || undefined}
           />
+          {errors.password ? <p className="text-sm font-medium text-destructive">{errors.password}</p> : null}
+        </div>
 
-          <BoldInput
-            label="Confirm Password"
+        <div className="grid gap-2">
+          <Label htmlFor="confirmPassword">Confirm password</Label>
+          <Input
+            id="confirmPassword"
             type="password"
             required
             value={formData.confirmPassword}
             onChange={(e) => handleChange('confirmPassword', e.target.value)}
-            error={errors.confirmPassword}
             placeholder="••••••••"
             autoComplete="new-password"
+            aria-invalid={Boolean(errors.confirmPassword) || undefined}
           />
+          {errors.confirmPassword ? (
+            <p className="text-sm font-medium text-destructive">{errors.confirmPassword}</p>
+          ) : null}
+        </div>
 
-          <div className="space-y-3 pt-2">
-            <BoldButton
-              type="submit"
-              variant="primary"
-              isLoading={isLoading}
-              icon={<ArrowRight size={20} weight="bold" />}
-            >
-              Accept Invitation
-            </BoldButton>
+        <div className="grid gap-3">
+          <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
+            {isLoading ? <AuthSpinner /> : null}
+            Accept invitation
+            <ArrowRight size={16} weight="bold" />
+          </Button>
 
-            <BoldButton
-              type="button"
-              variant="outline"
-              onClick={declineInvite}
-              isLoading={isLoading}
-            >
-              Decline Invitation
-            </BoldButton>
+          <Button type="button" variant="outline" className="h-11 w-full gap-2" onClick={declineInvite} disabled={isLoading}>
+            {isLoading ? <AuthSpinner /> : null}
+            Decline invitation
+          </Button>
 
-            <BoldButton type="button" variant="outline" onClick={() => setLocation('/')}
-            >
-              <ArrowLeft size={20} weight="bold" />
-              Back
-            </BoldButton>
-          </div>
-        </form>
-      </AuthCard>
-    </div>
+          <Button type="button" variant="outline" className="h-11 w-full gap-2" onClick={() => setLocation('/')} disabled={isLoading}>
+            <ArrowLeft size={16} weight="bold" />
+            Back
+          </Button>
+        </div>
+      </form>
+    </AuthShell>
   )
 }

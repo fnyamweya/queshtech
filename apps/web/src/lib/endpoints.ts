@@ -156,6 +156,12 @@ export const endpoints = {
         const query = qs.toString()
         return query ? p(`${base}?${query}`) : p(base)
       },
+    publicSearchConfig: p('/public/catalog/search/config'),
+
+    // Admin search ops (Algolia)
+    algoliaTest: p('/catalog/search/algolia/test'),
+    algoliaApplySettings: p('/catalog/search/algolia/apply-settings'),
+    algoliaReindex: p('/catalog/search/algolia/reindex'),
   },
   pricing: {
     priceLists: p('/pricing/price-lists'),
@@ -268,6 +274,10 @@ export const endpoints = {
     oauthGoogleSecret: (id: string) => p(`/settings/oauth/google/profiles/${encodeURIComponent(id)}/secret`),
     oauthApple: p('/settings/oauth/apple'),
     oauthAppleSecret: p('/settings/oauth/apple/secret'),
+
+    // Algolia (catalog)
+    algoliaCatalog: p('/settings/algolia/catalog'),
+    algoliaCatalogSecret: p('/settings/algolia/catalog/secret'),
   },
   commonUploads: {
     upload: p('/common/upload'),

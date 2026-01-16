@@ -43,6 +43,12 @@ import { UpdateGoogleOAuthProfileDto } from '../dto/update-google-oauth-profile.
 import { UpdateGoogleOAuthProfileSecretDto } from '../dto/update-google-oauth-profile-secret.dto';
 import { GoogleOAuthProfileResponseDto } from '../dto/google-oauth-profile-response.dto';
 import {
+  AlgoliaCatalogSecretResponseDto,
+  AlgoliaCatalogSettingResponseDto,
+  UpdateAlgoliaCatalogSecretDto,
+  UpsertAlgoliaCatalogSettingDto,
+} from '../dto/algolia-catalog-setting.dto';
+import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
@@ -60,6 +66,75 @@ import {
 @ApiBearerAuth('access-token')
 export class SettingController {
   constructor(private readonly settingService: SettingService) {}
+
+  @Get('algolia/catalog')
+  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'read' })
+  @ApiOperation({ summary: 'Get Algolia catalog search settings' })
+  @ApiOkResponse({
+    description: 'Algolia catalog search settings retrieved successfully',
+    type: AlgoliaCatalogSettingResponseDto,
+  })
+  async getAlgoliaCatalogSettings(): Promise<
+    ApiResponse<AlgoliaCatalogSettingResponseDto>
+  > {
+    const data = await this.settingService.getAlgoliaCatalogSettings();
+    return ResponseUtil.success(
+      data,
+      'Algolia catalog search settings retrieved successfully',
+    );
+  }
+
+  @Post('algolia/catalog')
+  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'update' })
+  @LogActivity({
+    action: ActivityAction.UPDATE,
+    description: 'Algolia catalog search settings updated successfully',
+    resourceType: 'algolia-catalog-settings',
+  })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Upsert Algolia catalog search settings' })
+  @ApiBody({ type: UpsertAlgoliaCatalogSettingDto })
+  @ApiOkResponse({
+    description: 'Algolia catalog search settings updated successfully',
+    type: AlgoliaCatalogSettingResponseDto,
+  })
+  async upsertAlgoliaCatalogSettings(
+    @Body() dto: UpsertAlgoliaCatalogSettingDto,
+  ): Promise<ApiResponse<AlgoliaCatalogSettingResponseDto>> {
+    const data = await this.settingService.upsertAlgoliaCatalogSettings(dto);
+    return ResponseUtil.success(
+      data,
+      'Algolia catalog search settings updated successfully',
+    );
+  }
+
+  @Post('algolia/catalog/secret')
+  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'update' })
+  @LogActivity({
+    action: ActivityAction.UPDATE,
+    description: 'Algolia catalog admin key updated successfully',
+    resourceType: 'algolia-catalog-secret',
+  })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update Algolia Admin API key for catalog search',
+    description:
+      'Stores the key encrypted at rest. Key values are never returned in responses.',
+  })
+  @ApiBody({ type: UpdateAlgoliaCatalogSecretDto })
+  @ApiOkResponse({
+    description: 'Algolia catalog admin key updated successfully',
+    type: AlgoliaCatalogSecretResponseDto,
+  })
+  async updateAlgoliaCatalogSecret(
+    @Body() dto: UpdateAlgoliaCatalogSecretDto,
+  ): Promise<ApiResponse<AlgoliaCatalogSecretResponseDto>> {
+    const data = await this.settingService.updateAlgoliaCatalogSecret(dto);
+    return ResponseUtil.success(
+      data,
+      'Algolia catalog admin key updated successfully',
+    );
+  }
 
   @Post('oauth/apple/profiles')
   @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'update' })

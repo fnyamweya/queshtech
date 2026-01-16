@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { AuthShell } from '@/components/auth/auth-shell'
+import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
 import { apiRequest, ApiError, extractAccessToken, extractRefreshToken } from '@/lib/api'
 import { endpoints } from '@/lib/endpoints'
+import { ArrowRight, House, ShieldWarning, WarningCircle } from '@phosphor-icons/react'
 
 function safeDecode(value: string) {
   try {
@@ -90,9 +94,14 @@ function extractRoleFromProfile(profilePayload: any): string {
   )
 }
 
+type Phase = 'init' | 'exchange' | 'validate' | 'profile' | 'redirect'
+
 export function GoogleOAuthCallbackPage() {
   const [status, setStatus] = useState<'working' | 'error' | 'denied'>('working')
   const [message, setMessage] = useState('Completing Google sign-in…')
+  const [errorCode, setErrorCode] = useState<string | null>(null)
+  const [phase, setPhase] = useState<Phase>('init')
+  const [oauthKey, setOauthKey] = useState<'customer' | 'axis'>('customer')
 
   const { searchParams } = useMemo(() => {
     const raw = typeof window === 'undefined' ? '' : window.location.search
@@ -100,51 +109,55 @@ export function GoogleOAuthCallbackPage() {
   }, [])
 
   useEffect(() => {
+    const storedOauthKey = (() => {
+      try {
+        const rawKey = window.localStorage.getItem('auth-google-oauth-key')
+        if (rawKey) {
+          const parsed = JSON.parse(rawKey)
+          if (parsed === 'axis' || parsed === 'customer') return parsed
+        }
+      } catch {
+        // ignore
+      }
+      return 'customer' as const
+    })()
+    setOauthKey(storedOauthKey)
+
     const error = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
     if (error) {
       setStatus('error')
-      setMessage(errorDescription ? `${error}: ${safeDecode(errorDescription)}` : error)
+      setErrorCode(error)
+      setMessage(errorDescription ? safeDecode(errorDescription) : 'Google sign-in was cancelled or blocked.')
       return
     }
 
     const exchangeCode = searchParams.get('exchangeCode')
     if (!exchangeCode) {
       setStatus('error')
+      setErrorCode('missing_exchange_code')
       setMessage('Missing exchangeCode. Please try again.')
       return
     }
-
-    const oauthKey = (() => {
-      try {
-        const rawKey = window.localStorage.getItem('auth-google-oauth-key')
-        if (rawKey) {
-          const parsed = JSON.parse(rawKey)
-          if (typeof parsed === 'string' && parsed.trim()) return parsed.trim()
-        }
-      } catch {
-        // ignore
-      }
-      return 'customer'
-    })()
 
     let cancelled = false
 
     ;(async () => {
       try {
         setStatus('working')
+        setPhase('exchange')
         setMessage('Exchanging sign-in code…')
 
         const tokens = await apiRequest<unknown>(endpoints.auth.oauthExchange, {
           method: 'POST',
-          body: { exchangeCode, oauthKey },
+          body: { exchangeCode, oauthKey: storedOauthKey },
         })
 
         const accessToken = extractAccessToken(tokens)
         const refreshToken = extractRefreshToken(tokens)
         if (!accessToken) throw new Error('Login succeeded but no access token was returned.')
 
-        if (oauthKey === 'axis') {
+        if (storedOauthKey === 'axis') {
           // Store admin tokens for AdminAuthProvider.
           try {
             window.localStorage.setItem('admin-access-token', JSON.stringify(accessToken))
@@ -153,6 +166,7 @@ export function GoogleOAuthCallbackPage() {
             // ignore
           }
 
+          setPhase('validate')
           setMessage('Validating admin access…')
           const profile = await apiRequest<any>(endpoints.auth.profile, {
             method: 'GET',
@@ -165,6 +179,7 @@ export function GoogleOAuthCallbackPage() {
           if (!allowed) {
             clearAdminSessionStorage()
             setStatus('denied')
+            setErrorCode('access_denied')
             setMessage('Access denied. Your account is not allowed to access Axis.')
             return
           }
@@ -195,6 +210,7 @@ export function GoogleOAuthCallbackPage() {
             // ignore
           }
 
+          setPhase('redirect')
           if (!cancelled) window.location.href = redirectTo
           return
         }
@@ -207,6 +223,7 @@ export function GoogleOAuthCallbackPage() {
           // ignore
         }
 
+        setPhase('profile')
         setMessage('Loading your profile…')
         try {
           const profile = await apiRequest<any>(endpoints.auth.profile, { method: 'GET', token: accessToken })
@@ -233,15 +250,18 @@ export function GoogleOAuthCallbackPage() {
           // ignore
         }
 
+        setPhase('redirect')
         if (!cancelled) window.location.href = customerRedirect
       } catch (e: any) {
         if (cancelled) return
         if (e instanceof ApiError) {
           setStatus('error')
+          setErrorCode(`api_${e.status || 'error'}`)
           setMessage(e.message || 'Google sign-in failed. Please try again.')
           return
         }
         setStatus('error')
+        setErrorCode('unknown_error')
         setMessage(e?.message || 'Google sign-in failed. Please try again.')
       }
     })()
@@ -251,36 +271,121 @@ export function GoogleOAuthCallbackPage() {
     }
   }, [searchParams])
 
+  const isAdmin = oauthKey === 'axis'
+  const title =
+    status === 'working'
+      ? `Signing you in${isAdmin ? ' to Axis' : ''}…`
+      : status === 'denied'
+        ? 'Access denied'
+        : 'Sign-in failed'
+
+  const description =
+    status === 'working'
+      ? `Completing Google authentication${isAdmin ? ' for Axis' : ''}.`
+      : isAdmin
+        ? 'Your Google account could not be authenticated for Axis.'
+        : 'Your Google account could not be authenticated.'
+
+  const progressValue =
+    phase === 'init' ? 18 : phase === 'exchange' ? 38 : phase === 'validate' ? 58 : phase === 'profile' ? 72 : 92
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/10 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Signing you in</CardTitle>
-          <CardDescription>Completing Google authentication.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2 text-sm">
-            {status === 'working' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            <span className={status === 'error' || status === 'denied' ? 'text-destructive' : 'text-muted-foreground'}>{message}</span>
-          </div>
+    <AuthShell title={title} description={description}>
+      <div className="grid gap-5">
+        {status === 'working' ? (
+          <>
+            <AuthNotice className="flex items-start gap-3">
+              <AuthSpinner className="mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">Please wait</div>
+                <div className="text-sm text-muted-foreground">{message}</div>
+              </div>
+            </AuthNotice>
 
-          {status === 'denied' ? (
-            <div className="flex items-center justify-end gap-2">
-              <Button asChild variant="outline">
-                <Link href="/axis/login">Back to Axis login</Link>
+            <div className="grid gap-2">
+              <Progress value={progressValue} />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Secure exchange</span>
+                <span>{Math.min(99, Math.max(5, progressValue))}%</span>
+              </div>
+            </div>
+
+            <Button asChild variant="outline" className="h-11 w-full">
+              <Link href="/">
+                <House size={16} weight="bold" />
+                Continue shopping
+              </Link>
+            </Button>
+          </>
+        ) : status === 'denied' ? (
+          <>
+            <Alert variant="destructive">
+              <ShieldWarning size={16} weight="bold" />
+              <AlertTitle>Access denied</AlertTitle>
+              <AlertDescription>
+                <p>{message}</p>
+                {errorCode ? (
+                  <p>
+                    <Badge variant="secondary" className="mt-1">
+                      {errorCode}
+                    </Badge>
+                  </p>
+                ) : null}
+              </AlertDescription>
+            </Alert>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button asChild className="h-11 w-full">
+                <Link href="/axis/login">
+                  Back to Axis login
+                  <ArrowRight size={16} weight="bold" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-11 w-full">
+                <Link href="/">
+                  <House size={16} weight="bold" />
+                  Home
+                </Link>
               </Button>
             </div>
-          ) : null}
+          </>
+        ) : (
+          <>
+            <Alert variant="destructive">
+              <WarningCircle size={16} weight="bold" />
+              <AlertTitle>Google sign-in failed</AlertTitle>
+              <AlertDescription>
+                <p>{message}</p>
+                {errorCode ? (
+                  <p>
+                    <Badge variant="secondary" className="mt-1">
+                      {errorCode}
+                    </Badge>
+                  </p>
+                ) : null}
+                <p className="mt-2">
+                  Try a different Google account, or sign in with email/phone instead.
+                </p>
+              </AlertDescription>
+            </Alert>
 
-          {status === 'error' ? (
-            <div className="flex items-center justify-end gap-2">
-              <Button asChild variant="outline">
-                <Link href="/login">Back to login</Link>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button asChild className="h-11 w-full">
+                <Link href="/login">
+                  Back to sign in
+                  <ArrowRight size={16} weight="bold" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-11 w-full">
+                <Link href="/">
+                  <House size={16} weight="bold" />
+                  Home
+                </Link>
               </Button>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
-    </div>
+          </>
+        )}
+      </div>
+    </AuthShell>
   )
 }

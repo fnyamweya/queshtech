@@ -34,6 +34,12 @@ import { CreateAppleOAuthProfileDto } from '../dto/create-apple-oauth-profile.dt
 import { UpdateAppleOAuthProfileDto } from '../dto/update-apple-oauth-profile.dto';
 import { UpdateAppleOAuthProfileSecretDto } from '../dto/update-apple-oauth-profile-secret.dto';
 import { AppleOAuthProfileResponseDto } from '../dto/apple-oauth-profile-response.dto';
+import {
+  AlgoliaCatalogSecretResponseDto,
+  AlgoliaCatalogSettingResponseDto,
+  UpdateAlgoliaCatalogSecretDto,
+  UpsertAlgoliaCatalogSettingDto,
+} from '../dto/algolia-catalog-setting.dto';
 
 @Injectable()
 export class SettingService {
@@ -47,6 +53,296 @@ export class SettingService {
     private readonly cache: AppCacheService,
     private readonly crypto: SettingCryptoService,
   ) {}
+
+  private sanitizeAlgoliaIndexPart(value: string): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_\-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  }
+
+  private buildAlgoliaIndexName(prefix: string | undefined, base: string): string {
+    const b = this.sanitizeAlgoliaIndexPart(base || 'catalog_products');
+    const p = this.sanitizeAlgoliaIndexPart(prefix || '');
+    return p ? `${p}_${b}` : b;
+  }
+
+  private async upsertSetting(key: string, value: string): Promise<void> {
+    const existing = await this.settingRepository.findOne({ where: { key } });
+    if (existing) {
+      existing.value = value;
+      await this.settingRepository.save(existing);
+      return;
+    }
+
+    const created = this.settingRepository.create({ key, value });
+    await this.settingRepository.save(created);
+  }
+
+  private parseJsonSafe(raw: string): Record<string, unknown> {
+    const txt = String(raw || '').trim();
+    if (!txt) return {};
+    try {
+      const parsed = JSON.parse(txt);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private getBooleanRaw(raw: string | undefined, fallback: boolean): boolean {
+    const v = String(raw ?? '').trim().toLowerCase();
+    if (!v) return fallback;
+    return v === 'true' || v === '1' || v === 'yes';
+  }
+
+  async upsertAlgoliaCatalogSettings(
+    dto: UpsertAlgoliaCatalogSettingDto,
+  ): Promise<AlgoliaCatalogSettingResponseDto> {
+    const entries: Array<{ key: string; value: string }> = [];
+
+    if (dto.enabled !== undefined)
+      entries.push({ key: 'algolia_catalog_enabled', value: String(dto.enabled) });
+    if (dto.appId !== undefined)
+      entries.push({ key: 'algolia_catalog_app_id', value: dto.appId.trim() });
+    if (dto.searchApiKey !== undefined)
+      entries.push({ key: 'algolia_catalog_search_api_key', value: dto.searchApiKey.trim() });
+    if (dto.indexPrefix !== undefined)
+      entries.push({ key: 'algolia_catalog_index_prefix', value: dto.indexPrefix.trim() });
+    if (dto.productsIndexName !== undefined)
+      entries.push({
+        key: 'algolia_catalog_products_index_name',
+        value: dto.productsIndexName.trim(),
+      });
+
+    if (dto.indexSettingsJson !== undefined)
+      entries.push({
+        key: 'algolia_catalog_index_settings_json',
+        value: JSON.stringify(dto.indexSettingsJson ?? {}),
+      });
+    if (dto.searchParamsJson !== undefined)
+      entries.push({
+        key: 'algolia_catalog_search_params_json',
+        value: JSON.stringify(dto.searchParamsJson ?? {}),
+      });
+
+    if (dto.minQueryLength !== undefined)
+      entries.push({
+        key: 'algolia_catalog_min_query_length',
+        value: String(dto.minQueryLength),
+      });
+    if (dto.debounceMs !== undefined)
+      entries.push({
+        key: 'algolia_catalog_debounce_ms',
+        value: String(dto.debounceMs),
+      });
+
+    for (const entry of entries) {
+      await this.upsertSetting(entry.key, entry.value);
+    }
+
+    await this.cache.del('settings:algolia:catalog');
+    await this.cache.del('settings:algolia:catalog:internal');
+
+    return this.getAlgoliaCatalogSettings();
+  }
+
+  async getAlgoliaCatalogSettings(): Promise<AlgoliaCatalogSettingResponseDto> {
+    const data = await this.cache.remember(
+      'settings:algolia:catalog',
+      async () => {
+        const keys = [
+          'algolia_catalog_enabled',
+          'algolia_catalog_app_id',
+          'algolia_catalog_search_api_key',
+          'algolia_catalog_admin_api_key',
+          'algolia_catalog_index_prefix',
+          'algolia_catalog_products_index_name',
+          'algolia_catalog_index_settings_json',
+          'algolia_catalog_search_params_json',
+          'algolia_catalog_min_query_length',
+          'algolia_catalog_debounce_ms',
+        ];
+
+        const settings = await this.settingRepository.find({
+          where: keys.map((key) => ({ key })),
+        });
+
+        const getRaw = (key: string) =>
+          settings.find((s) => s.key === key)?.value || '';
+
+        const enabled = this.getBooleanRaw(getRaw('algolia_catalog_enabled'), false);
+        const appId = getRaw('algolia_catalog_app_id') || undefined;
+        const searchApiKey = getRaw('algolia_catalog_search_api_key') || undefined;
+        const adminStored = getRaw('algolia_catalog_admin_api_key') || '';
+        const indexPrefix = getRaw('algolia_catalog_index_prefix') || undefined;
+        const productsIndexName =
+          getRaw('algolia_catalog_products_index_name') || 'catalog_products';
+
+        const minQueryLengthRaw = getRaw('algolia_catalog_min_query_length');
+        const debounceMsRaw = getRaw('algolia_catalog_debounce_ms');
+        const minQueryLength = Number.isFinite(Number(minQueryLengthRaw))
+          ? Math.max(0, Number(minQueryLengthRaw))
+          : 2;
+        const debounceMs = Number.isFinite(Number(debounceMsRaw))
+          ? Math.max(0, Number(debounceMsRaw))
+          : 150;
+
+        const indexSettingsJson = this.parseJsonSafe(
+          getRaw('algolia_catalog_index_settings_json'),
+        );
+        const searchParamsJson = this.parseJsonSafe(
+          getRaw('algolia_catalog_search_params_json'),
+        );
+
+        const effectiveProductsIndexName = this.buildAlgoliaIndexName(
+          indexPrefix,
+          productsIndexName,
+        );
+
+        return {
+          enabled,
+          appId,
+          hasAdminApiKey: Boolean(adminStored),
+          hasSearchApiKey: Boolean(searchApiKey),
+          searchApiKey,
+          indexPrefix,
+          productsIndexName,
+          effectiveProductsIndexName,
+          indexSettingsJson,
+          searchParamsJson,
+          minQueryLength,
+          debounceMs,
+          createdAt: settings[0]?.createdAt,
+          updatedAt: settings
+            .map((s) => s.updatedAt)
+            .filter((d): d is Date => Boolean(d))
+            .sort((a, b) => b.getTime() - a.getTime())[0],
+        } satisfies AlgoliaCatalogSettingResponseDto;
+      },
+      { ttlSeconds: 300 },
+    );
+
+    return data as AlgoliaCatalogSettingResponseDto;
+  }
+
+  async updateAlgoliaCatalogSecret(
+    dto: UpdateAlgoliaCatalogSecretDto,
+  ): Promise<AlgoliaCatalogSecretResponseDto> {
+    if (dto.adminApiKey === undefined) {
+      const existing = await this.settingRepository.findOne({
+        where: { key: 'algolia_catalog_admin_api_key' },
+      });
+
+      return {
+        hasAdminApiKey: Boolean(existing?.value),
+        updatedAt: existing?.updatedAt,
+      };
+    }
+
+    const value = dto.adminApiKey.trim();
+    const stored = value ? this.crypto.encrypt(value) : '';
+    await this.upsertSetting('algolia_catalog_admin_api_key', stored);
+
+    await this.cache.del('settings:algolia:catalog');
+    await this.cache.del('settings:algolia:catalog:internal');
+
+    const updated = await this.settingRepository.findOne({
+      where: { key: 'algolia_catalog_admin_api_key' },
+    });
+
+    return {
+      hasAdminApiKey: Boolean(updated?.value),
+      updatedAt: updated?.updatedAt,
+    };
+  }
+
+  async getAlgoliaCatalogSettingsInternalSafe(): Promise<{
+    enabled: boolean;
+    appId?: string;
+    searchApiKey?: string;
+    adminApiKey?: string;
+    indexPrefix?: string;
+    productsIndexName?: string;
+    indexSettingsJson?: Record<string, unknown>;
+    searchParamsJson?: Record<string, unknown>;
+    minQueryLength?: number;
+    debounceMs?: number;
+  } | null> {
+    const data = await this.cache.remember(
+      'settings:algolia:catalog:internal',
+      async () => {
+        const keys = [
+          'algolia_catalog_enabled',
+          'algolia_catalog_app_id',
+          'algolia_catalog_search_api_key',
+          'algolia_catalog_admin_api_key',
+          'algolia_catalog_index_prefix',
+          'algolia_catalog_products_index_name',
+          'algolia_catalog_index_settings_json',
+          'algolia_catalog_search_params_json',
+          'algolia_catalog_min_query_length',
+          'algolia_catalog_debounce_ms',
+        ];
+
+        const settings = await this.settingRepository.find({
+          where: keys.map((key) => ({ key })),
+        });
+        if (!settings.length) return null;
+
+        const getRaw = (key: string) =>
+          settings.find((s) => s.key === key)?.value || '';
+
+        const enabled = this.getBooleanRaw(getRaw('algolia_catalog_enabled'), false);
+        const appId = getRaw('algolia_catalog_app_id') || undefined;
+        const searchApiKey = getRaw('algolia_catalog_search_api_key') || undefined;
+
+        const adminStored = getRaw('algolia_catalog_admin_api_key') || '';
+        const adminApiKey = adminStored ? this.crypto.decrypt(adminStored) : undefined;
+
+        const indexPrefix = getRaw('algolia_catalog_index_prefix') || undefined;
+        const productsIndexName =
+          getRaw('algolia_catalog_products_index_name') || 'catalog_products';
+
+        const minQueryLengthRaw = getRaw('algolia_catalog_min_query_length');
+        const debounceMsRaw = getRaw('algolia_catalog_debounce_ms');
+        const minQueryLength = Number.isFinite(Number(minQueryLengthRaw))
+          ? Math.max(0, Number(minQueryLengthRaw))
+          : 2;
+        const debounceMs = Number.isFinite(Number(debounceMsRaw))
+          ? Math.max(0, Number(debounceMsRaw))
+          : 150;
+
+        const indexSettingsJson = this.parseJsonSafe(
+          getRaw('algolia_catalog_index_settings_json'),
+        );
+        const searchParamsJson = this.parseJsonSafe(
+          getRaw('algolia_catalog_search_params_json'),
+        );
+
+        return {
+          enabled,
+          appId,
+          searchApiKey,
+          adminApiKey,
+          indexPrefix,
+          productsIndexName,
+          indexSettingsJson,
+          searchParamsJson,
+          minQueryLength,
+          debounceMs,
+        };
+      },
+      { ttlSeconds: 60 },
+    );
+
+    return (data as any) ?? null;
+  }
 
   private toGoogleOAuthProfileResponse(
     profile: OAuthProviderSetting,

@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
-import { AuthCard } from '@/components/auth/auth-card'
-import { BoldButton } from '@/components/auth/bold-button'
-import { BoldInput } from '@/components/auth/bold-input'
+import { AuthShell } from '@/components/auth/auth-shell'
+import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { ArrowRight, ArrowLeft } from '@phosphor-icons/react'
 import { ApiError } from '@/lib/api'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 import { endpoints } from '@/lib/endpoints'
 import { createApiClient } from '@/lib/api-client'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 function isEmailIdentifier(value: string) {
   return value.includes('@')
@@ -220,49 +222,42 @@ export function ForgotPasswordPage() {
 
   if (step === 'done') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-        <AuthCard
-          title="Password Updated"
-          description="You can now sign in with your new password"
-        >
-          <div className="space-y-6">
-            <div className="bg-primary/10 border-2 border-primary/20 p-6" style={{ borderRadius: 0 }}>
-              <p className="text-sm text-foreground leading-relaxed">
-                Your password has been reset successfully for <strong>{identifier}</strong>.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <BoldButton
-                variant="primary"
-                onClick={() => setLocation('/login')}
-                icon={<ArrowRight size={20} weight="bold" />}
-              >
-                Back to Sign In
-              </BoldButton>
-            </div>
-          </div>
-        </AuthCard>
-      </div>
+      <AuthShell title="Password updated" description="You can now sign in with your new password.">
+        <div className="grid gap-5">
+          <AuthNotice tone="primary">
+            Your password has been reset for <span className="font-semibold">{identifier}</span>.
+          </AuthNotice>
+          <Button className="h-11 w-full gap-2" onClick={() => setLocation('/login')}>
+            Back to sign in
+            <ArrowRight size={16} weight="bold" />
+          </Button>
+        </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4 py-12">
-      <AuthCard
-        title="Reset Password"
-        description={
-          step === 'send'
-            ? 'Step 1 of 3 — Request a verification code'
-            : step === 'verify'
-              ? 'Step 2 of 3 — Verify the code'
-              : 'Step 3 of 3 — Set a new password'
-        }
-      >
-        {step === 'send' && (
-          <form onSubmit={handleSend} className="space-y-5">
-            <BoldInput
-              label="Email or Phone"
+    <AuthShell
+      title="Reset password"
+      description={
+        step === 'send'
+          ? 'Step 1 of 3 — Request a verification code'
+          : step === 'verify'
+            ? 'Step 2 of 3 — Verify the code'
+            : 'Step 3 of 3 — Set a new password'
+      }
+      headerRight={
+        <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setLocation('/login')}>
+          Sign in
+        </Button>
+      }
+    >
+      {step === 'send' && (
+        <form onSubmit={handleSend} className="grid gap-5">
+          <div className="grid gap-2">
+            <Label htmlFor="identifier">Email or phone</Label>
+            <Input
+              id="identifier"
               type="text"
               required
               value={identifier}
@@ -272,144 +267,130 @@ export function ForgotPasswordPage() {
                 if (resetToken) setResetToken(null)
                 if (errors.identifier) setErrors(prev => ({ ...prev, identifier: '' }))
               }}
-              error={errors.identifier}
               placeholder="+254712345678 or jane.doe@example.com"
+              autoComplete="username"
+              aria-invalid={Boolean(errors.identifier) || undefined}
             />
+            {errors.identifier ? <p className="text-sm font-medium text-destructive">{errors.identifier}</p> : null}
+          </div>
 
-            <div className="bg-muted/50 border-2 border-border p-4" style={{ borderRadius: 0 }}>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                We'll send you a verification code to confirm it's you.
-              </p>
-            </div>
+          <AuthNotice className="text-muted-foreground">
+            We’ll send a 6‑digit code to confirm it’s you.
+          </AuthNotice>
 
-            <div className="space-y-3 pt-2">
-              <BoldButton
-                type="submit"
-                variant="primary"
-                isLoading={isLoading}
-                icon={<ArrowRight size={20} weight="bold" />}
-              >
-                Send Verification Code
-              </BoldButton>
+          <div className="grid gap-3">
+            <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
+              {isLoading ? <AuthSpinner /> : null}
+              Send verification code
+              <ArrowRight size={16} weight="bold" />
+            </Button>
+            <Button type="button" variant="outline" className="h-11 w-full gap-2" onClick={() => setLocation('/login')}>
+              <ArrowLeft size={16} weight="bold" />
+              Back to sign in
+            </Button>
+          </div>
+        </form>
+      )}
 
-              <BoldButton
+      {step === 'verify' && (
+        <form onSubmit={handleVerify} className="grid gap-5">
+          <AuthNotice className="text-muted-foreground">
+            We sent a 6‑digit code to <span className="font-semibold text-foreground">{maskIdentifier(identifier)}</span>.
+          </AuthNotice>
+
+          <div className="grid gap-3">
+            <Label className="justify-center">Verification code</Label>
+            <InputOTP
+              maxLength={6}
+              value={code}
+              onChange={(value) => {
+                setCode(value)
+                if (errors.code) setErrors(prev => ({ ...prev, code: '' }))
+              }}
+              containerClassName="justify-center"
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} />
+                <InputOTPSlot index={1} />
+                <InputOTPSlot index={2} />
+                <InputOTPSlot index={3} />
+                <InputOTPSlot index={4} />
+                <InputOTPSlot index={5} />
+              </InputOTPGroup>
+            </InputOTP>
+            {errors.code ? <p className="text-center text-sm font-medium text-destructive">{errors.code}</p> : null}
+          </div>
+
+          <div className="grid gap-3">
+            <Button type="submit" className="h-11 w-full gap-2" disabled={!canVerify || isLoading}>
+              {isLoading ? <AuthSpinner /> : null}
+              Verify code
+              <ArrowRight size={16} weight="bold" />
+            </Button>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
                 type="button"
                 variant="outline"
-                onClick={() => setLocation('/login')}
+                className="h-11 w-full gap-2"
+                disabled={isLoading}
+                onClick={() => {
+                  setCode('')
+                  setErrors({})
+                  setUserId('')
+                  setLocation(pathForStep('send'))
+                }}
               >
-                <ArrowLeft size={20} weight="bold" />
-                Back to Sign In
-              </BoldButton>
-            </div>
-          </form>
-        )}
+                <ArrowLeft size={16} weight="bold" />
+                Change email/phone
+              </Button>
 
-        {step === 'verify' && (
-          <form onSubmit={handleVerify} className="space-y-5">
-            <div className="bg-muted/50 border-2 border-border p-4" style={{ borderRadius: 0 }}>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                We sent a 6-digit code to <strong className="text-foreground">{maskIdentifier(identifier)}</strong>.
-              </p>
-            </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full gap-2"
+                disabled={isLoading}
+                onClick={async () => {
+                  setErrors({})
+                  setCode('')
+                  setIsLoading(true)
+                  try {
+                    const payload = await api.post<any>(endpoints.auth.otpSendForgotPassword, {
+                      identifier: identifier.trim(),
+                    })
 
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-foreground">
-                Verification Code
-              </label>
-              <div className="flex justify-center">
-                <InputOTP
-                  maxLength={6}
-                  value={code}
-                  onChange={(value) => {
-                    setCode(value)
-                    if (errors.code) setErrors(prev => ({ ...prev, code: '' }))
-                  }}
-                >
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-              {errors.code ? (
-                <p className="text-sm font-semibold text-destructive">{errors.code}</p>
-              ) : null}
-            </div>
+                    const nextUserId = String((payload as any)?.userId || (payload as any)?.data?.userId || '').trim()
+                    if (nextUserId) setUserId(nextUserId)
 
-            <div className="space-y-3 pt-2">
-              <BoldButton
-                type="submit"
-                variant="primary"
-                isLoading={isLoading}
-                icon={<ArrowRight size={20} weight="bold" />}
-                disabled={!canVerify || isLoading}
+                    toast.success('Code resent', {
+                      description: 'Check your messages for the new OTP code.',
+                    })
+                  } catch (error) {
+                    const message = error instanceof ApiError ? error.message : 'Failed to resend verification code.'
+                    toast.error('Request failed', { description: message })
+                  } finally {
+                    setIsLoading(false)
+                  }
+                }}
               >
-                Verify Code
-              </BoldButton>
-
-              <div className="flex gap-3">
-                <BoldButton
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setCode('')
-                    setErrors({})
-                    setUserId('')
-                    setLocation(pathForStep('send'))
-                  }}
-                >
-                  <ArrowLeft size={20} weight="bold" />
-                  Change Email/Phone
-                </BoldButton>
-
-                <BoldButton
-                  type="button"
-                  variant="outline"
-                  isLoading={isLoading}
-                  onClick={async () => {
-                    setErrors({})
-                    setCode('')
-                    setIsLoading(true)
-                    try {
-                      const payload = await api.post<any>(endpoints.auth.otpSendForgotPassword, {
-                        identifier: identifier.trim(),
-                      })
-
-                      const nextUserId = String((payload as any)?.userId || (payload as any)?.data?.userId || '').trim()
-                      if (nextUserId) setUserId(nextUserId)
-
-                      toast.success('Code resent', {
-                        description: 'Check your messages for the new OTP code.',
-                      })
-                    } catch (error) {
-                      const message = error instanceof ApiError ? error.message : 'Failed to resend verification code.'
-                      toast.error('Request failed', { description: message })
-                    } finally {
-                      setIsLoading(false)
-                    }
-                  }}
-                >
-                  Send Again
-                </BoldButton>
-              </div>
+                {isLoading ? <AuthSpinner /> : null}
+                Send again
+              </Button>
             </div>
-          </form>
-        )}
+          </div>
+        </form>
+      )}
 
-        {step === 'reset' && (
-          <form onSubmit={handleReset} className="space-y-5">
-            <div className="bg-muted/50 border-2 border-border p-4" style={{ borderRadius: 0 }}>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Setting a new password for <strong className="text-foreground">{maskIdentifier(identifier)}</strong>.
-              </p>
-            </div>
+      {step === 'reset' && (
+        <form onSubmit={handleReset} className="grid gap-5">
+          <AuthNotice className="text-muted-foreground">
+            Set a new password for <span className="font-semibold text-foreground">{maskIdentifier(identifier)}</span>.
+          </AuthNotice>
 
-            <BoldInput
-              label="New Password"
+          <div className="grid gap-2">
+            <Label htmlFor="newPassword">New password</Label>
+            <Input
+              id="newPassword"
               type="password"
               required
               value={newPassword}
@@ -417,12 +398,17 @@ export function ForgotPasswordPage() {
                 setNewPassword(e.target.value)
                 if (errors.newPassword) setErrors(prev => ({ ...prev, newPassword: '' }))
               }}
-              error={errors.newPassword}
               placeholder="••••••••"
+              autoComplete="new-password"
+              aria-invalid={Boolean(errors.newPassword) || undefined}
             />
+            {errors.newPassword ? <p className="text-sm font-medium text-destructive">{errors.newPassword}</p> : null}
+          </div>
 
-            <BoldInput
-              label="Confirm Password"
+          <div className="grid gap-2">
+            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <Input
+              id="confirmPassword"
               type="password"
               required
               value={confirmPassword}
@@ -430,43 +416,45 @@ export function ForgotPasswordPage() {
                 setConfirmPassword(e.target.value)
                 if (errors.confirmPassword) setErrors(prev => ({ ...prev, confirmPassword: '' }))
               }}
-              error={errors.confirmPassword}
               placeholder="••••••••"
+              autoComplete="new-password"
+              aria-invalid={Boolean(errors.confirmPassword) || undefined}
             />
-
-            {errors.resetToken ? (
-              <div className="bg-destructive/10 border-2 border-destructive/20 p-4" style={{ borderRadius: 0 }}>
-                <p className="text-sm font-semibold text-destructive">{errors.resetToken}</p>
-              </div>
+            {errors.confirmPassword ? (
+              <p className="text-sm font-medium text-destructive">{errors.confirmPassword}</p>
             ) : null}
+          </div>
 
-            <div className="space-y-3 pt-2">
-              <BoldButton
-                type="submit"
-                variant="primary"
-                isLoading={isLoading}
-                icon={<ArrowRight size={20} weight="bold" />}
-              >
-                Reset Password
-              </BoldButton>
+          {errors.resetToken ? (
+            <AuthNotice tone="destructive">
+              <span className="font-semibold text-destructive">{errors.resetToken}</span>
+            </AuthNotice>
+          ) : null}
 
-              <BoldButton
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setNewPassword('')
-                  setConfirmPassword('')
-                  setResetToken(null)
-                  setLocation(pathForStep('verify'))
-                }}
-              >
-                <ArrowLeft size={20} weight="bold" />
-                Back
-              </BoldButton>
-            </div>
-          </form>
-        )}
-      </AuthCard>
-    </div>
+          <div className="grid gap-3">
+            <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
+              {isLoading ? <AuthSpinner /> : null}
+              Reset password
+              <ArrowRight size={16} weight="bold" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full gap-2"
+              disabled={isLoading}
+              onClick={() => {
+                setNewPassword('')
+                setConfirmPassword('')
+                setResetToken(null)
+                setLocation(pathForStep('verify'))
+              }}
+            >
+              <ArrowLeft size={16} weight="bold" />
+              Back
+            </Button>
+          </div>
+        </form>
+      )}
+    </AuthShell>
   )
 }

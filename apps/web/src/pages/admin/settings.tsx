@@ -77,6 +77,12 @@ export function AdminSettingsPage() {
           href: '/axis/settings/mpesa',
           cta: 'Open M-Pesa',
         },
+        {
+          title: 'Algolia (Search)',
+          description: 'Configure full-text catalog search for the storefront (products only).',
+          href: '/axis/settings/algolia',
+          cta: 'Open Algolia',
+        },
       ],
     },
     {

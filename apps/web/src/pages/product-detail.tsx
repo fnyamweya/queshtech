@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useRoute } from 'wouter'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -37,6 +37,7 @@ import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { usePublicProduct, usePublicCategoryProducts } from '@/hooks/use-public-products'
 import { ProductCard } from '@/components/commerce/product-card'
+import { useWishlist } from '@/hooks/use-wishlist'
 
 interface ProductDetailPageProps {
   onAddToCart: (product: Product, variants: Record<string, string>) => void
@@ -50,8 +51,34 @@ export function ProductDetailPage({ onAddToCart }: ProductDetailPageProps) {
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({})
-  const [isFavorite, setIsFavorite] = useState(false)
   const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const { toggle: toggleWishlist, isInWishlist } = useWishlist()
+
+  const images = product?.images ?? []
+  const variantsList = Array.isArray(product?.variants) ? product?.variants : []
+  const mainImage = images[selectedImage] || images[0]
+
+  const groupedVariants = useMemo(() => {
+    return variantsList.reduce((acc, variant) => {
+      if (!acc[variant.type]) {
+        acc[variant.type] = []
+      }
+      acc[variant.type].push(variant)
+      return acc
+    }, {} as Record<string, typeof variantsList>)
+  }, [variantsList])
+
+  useEffect(() => {
+    if (!product) return
+    if (Object.keys(groupedVariants).length === 0) return
+    setSelectedVariants((prev) => {
+      const next = { ...prev }
+      for (const [type, options] of Object.entries(groupedVariants)) {
+        if (!next[type] && options.length) next[type] = options[0].value
+      }
+      return next
+    })
+  }, [groupedVariants, product])
 
   if (isLoading) {
     return (
@@ -74,30 +101,6 @@ export function ProductDetailPage({ onAddToCart }: ProductDetailPageProps) {
     )
   }
 
-  const images = product.images ?? []
-  const variantsList = Array.isArray(product.variants) ? product.variants : []
-  const mainImage = images[selectedImage] || images[0]
-
-  const groupedVariants = variantsList.reduce((acc, variant) => {
-    if (!acc[variant.type]) {
-      acc[variant.type] = []
-    }
-    acc[variant.type].push(variant)
-    return acc
-  }, {} as Record<string, typeof variantsList>)
-
-  useEffect(() => {
-    if (!product) return
-    if (Object.keys(groupedVariants).length === 0) return
-    setSelectedVariants((prev) => {
-      const next = { ...prev }
-      for (const [type, options] of Object.entries(groupedVariants)) {
-        if (!next[type] && options.length) next[type] = options[0].value
-      }
-      return next
-    })
-  }, [groupedVariants, product])
-
   const handleVariantChange = (type: string, value: string) => {
     setSelectedVariants((prev) => ({ ...prev, [type]: value }))
   }
@@ -116,8 +119,10 @@ export function ProductDetailPage({ onAddToCart }: ProductDetailPageProps) {
     })
   }
 
+  const isFavorite = isInWishlist(product.id)
+
   const handleToggleFavorite = () => {
-    setIsFavorite(!isFavorite)
+    toggleWishlist(product)
     toast.success(isFavorite ? 'Removed from wishlist' : 'Added to wishlist')
   }
 

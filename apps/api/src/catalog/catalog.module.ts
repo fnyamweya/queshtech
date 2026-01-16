@@ -36,6 +36,8 @@ import { PublicTaxonomiesController } from './controllers/public/public-taxonomi
 import { PublicCollectionsController } from './controllers/public/public-collections.controller';
 import { PublicPersonalizationController } from './controllers/public/public-personalization.controller';
 import { PublicProductReviewsController } from './controllers/public/public-product-reviews.controller';
+import { PublicSearchController } from './controllers/public/public-search.controller';
+import { CatalogSearchController } from './controllers/catalog-search.controller';
 import { TaxonomyService } from './services/taxonomy.service';
 import { CategoryService } from './services/category.service';
 import { ProductService } from './services/product.service';
@@ -47,9 +49,11 @@ import { ProductReviewService } from './services/product-review.service';
 import { CatalogSeeder } from './seeders/catalog.seeder';
 import { CollectionSeeder } from './seeders/collection.seeder';
 import { PriceService } from './services/price.service';
+import { AlgoliaCatalogService } from './services/algolia-catalog.service';
 import { CustomerTierModule } from '../customer-tier/customer-tier.module';
 import { CurrencyModule } from '../currency/currency.module';
 import { CustomerProductReviewsController } from './controllers/customer/customer-product-reviews.controller';
+import { SettingModule } from '../setting/setting.module';
 
 @Module({
   imports: [
@@ -80,6 +84,7 @@ import { CustomerProductReviewsController } from './controllers/customer/custome
     ]),
     CustomerTierModule,
     CurrencyModule,
+    SettingModule,
   ],
   controllers: [
     TaxonomyController,
@@ -96,6 +101,8 @@ import { CustomerProductReviewsController } from './controllers/customer/custome
     PublicPersonalizationController,
     PublicProductReviewsController,
     CustomerProductReviewsController,
+    PublicSearchController,
+    CatalogSearchController,
   ],
   providers: [
     TaxonomyService,
@@ -109,6 +116,7 @@ import { CustomerProductReviewsController } from './controllers/customer/custome
     CatalogSeeder,
     CollectionSeeder,
     PriceService,
+    AlgoliaCatalogService,
   ],
   exports: [
     TypeOrmModule,
@@ -123,6 +131,7 @@ import { CustomerProductReviewsController } from './controllers/customer/custome
     CatalogSeeder,
     CollectionSeeder,
     PriceService,
+    AlgoliaCatalogService,
   ],
 })
 export class CatalogModule {}

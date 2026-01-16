@@ -1037,9 +1037,9 @@ export function AdminSettingsLocationsPage() {
         })
       } catch (e: any) {
         // Attempt rollback so we don't leave a partially configured country.
-        try {
-          if (createdId) await authorizedRequest(endpoints.locations.byId(createdId), { method: 'DELETE' })
-        } catch {}
+        if (createdId) {
+          await authorizedRequest(endpoints.locations.byId(createdId), { method: 'DELETE' }).catch(() => null)
+        }
         throw new Error(e?.message ? `Address config failed: ${e.message}` : 'Address config failed')
       }
 
@@ -1052,9 +1052,9 @@ export function AdminSettingsLocationsPage() {
           },
         })
       } catch (e: any) {
-        try {
-          if (createdId) await authorizedRequest(endpoints.locations.byId(createdId), { method: 'DELETE' })
-        } catch {}
+        if (createdId) {
+          await authorizedRequest(endpoints.locations.byId(createdId), { method: 'DELETE' }).catch(() => null)
+        }
         throw new Error(e?.message ? `Country config failed: ${e.message}` : 'Country config failed')
       }
 
@@ -1792,11 +1792,6 @@ export function AdminSettingsLocationsPage() {
                                             next[idx] = { ...next[idx], locationType: v }
                                             return next
                                           })
-                                          {editCountryLocationLevels.length === 0 ? (
-                                            <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
-                                              No levels yet. Add one to define your location chain and optional Google mapping.
-                                            </div>
-                                          ) : null}
                                         }}
                                         placeholder="e.g. ward"
                                       />

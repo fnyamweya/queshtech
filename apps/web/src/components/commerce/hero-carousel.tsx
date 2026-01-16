@@ -164,7 +164,7 @@ export function HeroCarousel({ slides }: { slides?: HeroSlide[] }) {
             )} />
             
             <div className={cn(
-              'absolute inset-0 bg-gradient-to-br mix-blend-overlay opacity-30',
+              'absolute inset-0 bg-gradient-to-br mix-blend-overlay opacity-20',
               currentSlide.gradient
             )} />
 

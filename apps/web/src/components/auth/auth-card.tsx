@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface AuthCardProps {
   children: ReactNode
@@ -9,20 +9,16 @@ interface AuthCardProps {
 
 export function AuthCard({ children, title, description }: AuthCardProps) {
   return (
-    <Card className="w-full max-w-md border-2 border-border shadow-2xl" style={{ borderRadius: 0 }}>
-      <div className="p-8 space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground font-display">
-            {title}
-          </h1>
-          {description && (
-            <p className="text-sm text-muted-foreground">
-              {description}
-            </p>
-          )}
-        </div>
+    <Card className="w-full max-w-md shadow-xl shadow-black/5 dark:shadow-black/25">
+      <CardHeader className="border-b">
+        <CardTitle className="text-2xl font-black tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+          {title}
+        </CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
+      </CardHeader>
+      <CardContent className="pt-6">
         {children}
-      </div>
+      </CardContent>
     </Card>
   )
 }
