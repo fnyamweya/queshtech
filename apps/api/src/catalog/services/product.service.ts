@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   BadRequestException,
   Injectable,
@@ -8,6 +7,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   Brackets,
   DataSource,
+  DeepPartial,
   EntityManager,
   In,
   IsNull,
@@ -44,6 +44,7 @@ import {
   cacheKeyHash,
 } from 'src/common/cache/cache-key.util';
 import { ShippingCatalogContextCacheIndexService } from 'src/common/cache/shipping-catalog-context-cache-index.service';
+import { PriceResolveCacheIndexService } from 'src/common/cache/price-resolve-cache-index.service';
 import { ProductAvailabilityDto } from '../dto/product-availability.dto';
 import { CreateProductSkuDto } from '../dto/create-product-sku.dto';
 import { CreateProductPriceDto } from '../dto/create-product-price.dto';
@@ -114,6 +115,7 @@ export class ProductService {
     private readonly dataSource: DataSource,
     private readonly cache: AppCacheService,
     private readonly shippingCatalogContextCacheIndex: ShippingCatalogContextCacheIndexService,
+    private readonly priceResolveCacheIndex: PriceResolveCacheIndexService,
     private readonly priceService: PriceService,
     private readonly currencyService: CurrencyService,
   ) {}
@@ -220,6 +222,23 @@ export class ProductService {
         manager,
       );
 
+      const inputsWithIds = (inputs ?? []).map((input, index) => {
+        const sku = skus?.[index];
+        return {
+          ...(input as any),
+          id: sku?.id,
+          sku: (input as any)?.sku ?? (sku as any)?.sku,
+        } as any;
+      });
+
+      await this.persistPrices(
+        saved.id,
+        (payload as any).prices,
+        skus,
+        inputsWithIds,
+        manager,
+      );
+
       if (payload.categoryIds?.length) {
         await this.attachCategories(saved.id, payload.categoryIds, manager);
       }
@@ -290,6 +309,8 @@ export class ProductService {
         }
 
         const [data, total] = await qb.getManyAndCount();
+
+        await this.attachSkuPrices(data);
         return { data, total, page, limit };
       },
       { ttlSeconds: 45 },
@@ -316,6 +337,8 @@ export class ProductService {
     );
 
     if (!product) throw new NotFoundException('Product not found');
+
+    await this.attachSkuPrices([product]);
     return product;
   }
 
@@ -352,19 +375,64 @@ export class ProductService {
 
     const saved = await this.productRepository.save(product);
 
-    if ((payload as any).skus) {
-      await this.skuRepository.delete({ productId: saved.id });
-      const optionDefs = (payload.optionDefinitions ??
-        (saved.optionDefinitionsJson as any) ??
-        []) as any[];
-      const { skus, inputs, channels } = await this.persistSkus(
-        saved.id,
-        saved.slug,
-        saved.title,
-        (payload as any).skus,
-        optionDefs,
-      );
-      await this.syncChannels(saved.id, channels);
+    const skuInputs = (payload as any).skus as CreateProductSkuDto[] | undefined;
+    const skusMode: 'replace' | 'patch' = payload.skusMode ?? 'replace';
+    let affectedSkuIds: string[] = [];
+
+    if (skuInputs) {
+      await this.dataSource.transaction(async (manager) => {
+        const { skuRepository, priceRowRepository } = this.getRepos(manager);
+
+        const optionDefs = (payload.optionDefinitions ??
+          (saved.optionDefinitionsJson as any) ??
+          []) as any[];
+
+        const {
+          skus: finalSkus,
+          deletedSkuIds,
+          touchedSkuIds,
+          channels,
+          shouldSyncChannels,
+        } = await this.upsertSkus(
+          saved.id,
+          saved.slug,
+          saved.title,
+          skuInputs,
+          optionDefs,
+          skusMode,
+          manager,
+        );
+
+        // Clean up prices for removed SKUs only.
+        if (deletedSkuIds.length) {
+          await priceRowRepository.delete({
+            targetType: 'SKU' as any,
+            targetId: In(deletedSkuIds),
+          });
+        }
+
+        // Only touch price rows for SKUs whose payload explicitly included prices.
+        const inputsWithPrices = (skuInputs ?? []).filter((s) =>
+          Object.prototype.hasOwnProperty.call(s as any, 'prices'),
+        );
+        if (inputsWithPrices.length) {
+          await this.persistPrices(
+            saved.id,
+            (payload as any).prices,
+            finalSkus,
+            inputsWithPrices,
+            manager,
+          );
+        }
+
+        if (shouldSyncChannels) {
+          await this.syncChannels(saved.id, channels, manager);
+        }
+
+        affectedSkuIds = Array.from(
+          new Set([...touchedSkuIds, ...deletedSkuIds]),
+        );
+      });
     }
 
     if (payload.categoryIds) {
@@ -375,8 +443,70 @@ export class ProductService {
     }
 
 
-    await this.clearProductCaches(saved.id);
+    await this.clearProductCaches(saved.id, affectedSkuIds);
     return this.findOne(saved.id);
+  }
+
+  private async attachSkuPrices(products: Product[]) {
+    const skuEntities = products.flatMap((p) => p.skus ?? []);
+    const skuIds = skuEntities.map((s) => s.id).filter(Boolean);
+    if (!skuIds.length) return;
+
+    const rows = await this.priceRowRepository.find({
+      where: { targetType: 'SKU' as any, targetId: In(skuIds) },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!rows.length) {
+      for (const s of skuEntities) (s as any).prices = [];
+      return;
+    }
+
+    const priceListIds = Array.from(new Set(rows.map((r) => r.priceListId)));
+    const lists = await this.priceListRepository.find({
+      where: { id: In(priceListIds) },
+    });
+    const listById = new Map(lists.map((l) => [l.id, l] as const));
+
+    const currencyCodes = Array.from(new Set(lists.map((l) => l.currency)));
+    const currencies = currencyCodes.length
+      ? await this.currencyRepository.find({
+          where: { code: In(currencyCodes) },
+        })
+      : [];
+    const precisionByCode = new Map(
+      currencies.map((c) => [c.code, c.precision] as const),
+    );
+
+    const bySkuId = new Map<string, any[]>();
+    for (const r of rows) {
+      const list = listById.get(r.priceListId);
+      const precision = precisionByCode.get(list?.currency ?? '') ?? 2;
+      const unitPrice = Number(this.fromMinorUnits(r.unitAmount, precision));
+      const compareAtPrice = r.compareAtAmount
+        ? Number(this.fromMinorUnits(r.compareAtAmount, precision))
+        : undefined;
+
+      const dto = {
+        id: r.id,
+        priceListId: r.priceListId,
+        unitPrice,
+        compareAtPrice,
+        minQuantity: r.minQuantity ?? undefined,
+        maxQuantity: r.maxQuantity ?? undefined,
+        validFrom: r.validFrom ? r.validFrom.toISOString() : undefined,
+        validTo: r.validTo ? r.validTo.toISOString() : undefined,
+        metaJson: r.metaJson ?? {},
+      };
+
+      const listForSku = bySkuId.get(r.targetId);
+      if (listForSku) listForSku.push(dto);
+      else bySkuId.set(r.targetId, [dto]);
+    }
+
+    for (const s of skuEntities) {
+      (s as any).prices = bySkuId.get(s.id) ?? [];
+    }
   }
 
   async remove(id: string): Promise<void> {
@@ -858,8 +988,9 @@ export class ProductService {
     });
 
     const saved = await this.priceRowRepository.save(row);
-    await this.cache.delByPrefix('price:resolve:');
-    await this.clearProductCaches(sku.productId);
+    await this.priceResolveCacheIndex.invalidateBySkuIds([sku.id]);
+    await this.priceResolveCacheIndex.invalidateByProductIds([sku.productId]);
+    await this.clearProductCaches(sku.productId, [sku.id]);
     return {
       ...saved,
       unitPrice: this.fromMinorUnits(saved.unitAmount, precision),
@@ -918,6 +1049,277 @@ export class ProductService {
     const product = await this.productRepository.findOne({ where: { id } });
     if (!product) throw new NotFoundException('Product not found');
     return product;
+  }
+
+  private stableStringify(value: any): string {
+    if (value === null || value === undefined) return 'null';
+    if (typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) {
+      return `[${value.map((v) => this.stableStringify(v)).join(',')}]`;
+    }
+    const obj = value as Record<string, any>;
+    const keys = Object.keys(obj).sort();
+    return `{${keys
+      .map((k) => `${JSON.stringify(k)}:${this.stableStringify(obj[k])}`)
+      .join(',')}}`;
+  }
+
+  private priceRowIdentityKey(args: {
+    skuId: string;
+    priceListId: string;
+    minQuantity?: number;
+    maxQuantity?: number;
+    validFrom?: string;
+    validTo?: string;
+    metaJson?: Record<string, unknown>;
+  }): string {
+    const conditions = (args.metaJson as any)?.conditions ?? {};
+    const selectorHash = cacheKeyHash(this.stableStringify(conditions));
+    return [
+      args.skuId,
+      args.priceListId,
+      String(args.minQuantity ?? 1),
+      String(args.maxQuantity ?? ''),
+      String(args.validFrom ?? ''),
+      String(args.validTo ?? ''),
+      selectorHash,
+    ].join('|');
+  }
+
+  private async upsertSkus(
+    productId: string,
+    slug: string,
+    productTitle: string,
+    skus: CreateProductSkuDto[],
+    optionDefinitions: Array<{
+      key: string;
+      allowedValues?: string[];
+      required?: boolean;
+    }>,
+    mode: 'replace' | 'patch',
+    manager?: EntityManager,
+  ): Promise<{
+    skus: ProductSku[];
+    deletedSkuIds: string[];
+    touchedSkuIds: string[];
+    channels: string[];
+    shouldSyncChannels: boolean;
+  }> {
+    const { skuRepository } = this.getRepos(manager);
+
+    const existingSkus = await skuRepository.find({ where: { productId } });
+    const existingById = new Map(existingSkus.map((s) => [s.id, s] as const));
+    const existingByCode = new Map(
+      existingSkus
+        .filter((s) => Boolean(s.sku))
+        .map((s) => [String(s.sku), s] as const),
+    );
+
+    const normalized: CreateProductSkuDto[] = skus?.length
+      ? skus
+      : ([{ title: productTitle, isDefault: true }] as any);
+
+    const defs = (optionDefinitions ?? []).filter(
+      (d) => d && typeof d.key === 'string' && d.key.trim().length > 0,
+    );
+    const allowedKeys = new Set(defs.map((d) => d.key));
+    const requiredKeys = new Set(
+      defs.filter((d) => d.required).map((d) => d.key),
+    );
+    const allowedValuesByKey = new Map(
+      defs.map(
+        (d) => [d.key, (d.allowedValues ?? []).map((v) => String(v))] as const,
+      ),
+    );
+
+    const validateOptions = (options: Record<string, unknown>) => {
+      if (!defs.length) return;
+
+      for (const key of Object.keys(options ?? {})) {
+        if (!allowedKeys.has(key)) {
+          throw new BadRequestException(`Invalid option key: ${key}`);
+        }
+      }
+
+      for (const requiredKey of requiredKeys) {
+        if (
+          options?.[requiredKey] === undefined ||
+          options?.[requiredKey] === null ||
+          options?.[requiredKey] === ''
+        ) {
+          throw new BadRequestException(`Missing required option: ${requiredKey}`);
+        }
+      }
+
+      for (const [key, allowed] of allowedValuesByKey.entries()) {
+        if (!allowed.length) continue;
+        if (options?.[key] === undefined || options?.[key] === null) continue;
+        const v = String(options[key]);
+        if (!allowed.includes(v)) {
+          throw new BadRequestException(`Invalid value for option '${key}': ${v}`);
+        }
+      }
+    };
+
+    const ensuredDefaultIndex = normalized.findIndex((s) => s.isDefault);
+    const defaultIdx = ensuredDefaultIndex >= 0 ? ensuredDefaultIndex : 0;
+
+    const shouldSyncChannels =
+      mode === 'replace' ||
+      normalized.some((s) => (s as any).availability !== undefined);
+
+    const toSave: ProductSku[] = [];
+    const touchedSkuIds: string[] = [];
+    const matchedExistingIds = new Set<string>();
+
+    for (const [index, input] of normalized.entries()) {
+      const inputId = String((input as any).id ?? '').trim();
+      const inputCode = String(input?.sku ?? '').trim();
+
+      const existing =
+        (inputId && existingById.get(inputId)) ||
+        (inputCode && existingByCode.get(inputCode)) ||
+        null;
+
+      const skuCode =
+        inputCode || existing?.sku || (await this.generateSku(slug, index, manager));
+
+      const rawStatus =
+        input.status !== undefined
+          ? String(input.status ?? 'active').toLowerCase()
+          : String(existing?.status ?? 'active').toLowerCase();
+      const status =
+        rawStatus === 'active' || rawStatus === 'archived'
+          ? rawStatus
+          : 'inactive';
+
+      const positionRaw =
+        input.position !== undefined ? input.position : (existing as any)?.position;
+      const positionCandidate =
+        typeof positionRaw === 'number'
+          ? positionRaw
+          : Number.parseInt(String(positionRaw ?? ''), 10);
+      const position = Number.isFinite(positionCandidate) ? positionCandidate : index;
+
+      const optionsProvided =
+        (input as any).options !== undefined || (input as any).attributes !== undefined;
+      const options = optionsProvided
+        ? (((input as any).options ?? (input as any).attributes ?? {}) as Record<
+            string,
+            unknown
+          >)
+        : (((existing as any)?.options ?? (existing as any)?.attributes ?? {}) as Record<
+            string,
+            unknown
+          >);
+      validateOptions(options);
+
+      const availabilityProvided = (input as any).availability !== undefined;
+      const availability = availabilityProvided
+        ? this.normalizeAvailability((input as any).availability)
+        : ((existing as any)?.availability ?? this.normalizeAvailability(undefined));
+
+      const imagesProvided = (input as any).images !== undefined;
+      const imagesJson = imagesProvided
+        ? this.normalizeImages((input as any).images)
+        : ((existing as any)?.imagesJson ?? []);
+
+      const inventoryProvided = (input as any).inventory !== undefined;
+      const inventory = inventoryProvided
+        ? ((input as any).inventory ?? {})
+        : ((existing as any)?.inventory ?? {});
+
+      const entity = existing
+        ? existing
+        : skuRepository.create({ productId } as DeepPartial<ProductSku>);
+
+      Object.assign(entity, {
+        productId,
+        title:
+          input.title !== undefined
+            ? input.title
+            : entity.title ?? productTitle,
+        sku: skuCode,
+        externalRef:
+          input.externalRef !== undefined ? input.externalRef : entity.externalRef,
+        status: status as any,
+        isDefault:
+          input.isDefault !== undefined
+            ? input.isDefault
+            : mode === 'replace'
+              ? index === defaultIdx
+              : (entity as any).isDefault,
+        position,
+        options: options as any,
+        attributes: options as any,
+        imagesJson,
+        availability: availability as any,
+        inventory: inventory as any,
+        requiresShipping:
+          (input as any).requiresShipping !== undefined
+            ? (input as any).requiresShipping
+            : (entity as any).requiresShipping,
+        weight:
+          (input as any).weight !== undefined
+            ? (input as any).weight.toString()
+            : (entity as any).weight,
+        length:
+          (input as any).length !== undefined
+            ? (input as any).length.toString()
+            : (entity as any).length,
+        width:
+          (input as any).width !== undefined
+            ? (input as any).width.toString()
+            : (entity as any).width,
+        height:
+          (input as any).height !== undefined
+            ? (input as any).height.toString()
+            : (entity as any).height,
+        dimensionUnit:
+          (input as any).dimensionUnit !== undefined
+            ? (input as any).dimensionUnit
+            : (entity as any).dimensionUnit,
+        weightUnit:
+          (input as any).weightUnit !== undefined
+            ? (input as any).weightUnit
+            : (entity as any).weightUnit,
+        metaJson:
+          (input as any).metaJson !== undefined
+            ? (input as any).metaJson
+            : (entity as any).metaJson,
+      });
+
+      toSave.push(entity);
+      if (existing?.id) matchedExistingIds.add(existing.id);
+    }
+
+    const saved = await skuRepository.save(toSave);
+    for (const s of saved) touchedSkuIds.push(s.id);
+
+    const deletedSkuIds: string[] = [];
+    if (mode === 'replace') {
+      for (const s of existingSkus) {
+        if (!matchedExistingIds.has(s.id)) deletedSkuIds.push(s.id);
+      }
+      if (deletedSkuIds.length) {
+        await skuRepository.delete({ id: In(deletedSkuIds) } as any);
+      }
+    }
+
+    const finalSkus = await skuRepository.find({ where: { productId } });
+    const channelSet = new Set<string>();
+    for (const sku of finalSkus) {
+      const channels = ((sku as any).availability?.channels ?? []) as string[];
+      for (const c of channels) channelSet.add(String(c));
+    }
+
+    return {
+      skus: finalSkus,
+      deletedSkuIds,
+      touchedSkuIds,
+      channels: Array.from(channelSet),
+      shouldSyncChannels,
+    };
   }
 
   private async persistSkus(
@@ -998,6 +1400,21 @@ export class ProductService {
       const sku =
         v.sku?.trim() || (await this.generateSku(slug, index, manager));
 
+      const rawStatus = String(v.status ?? 'active').toLowerCase();
+      const status =
+        rawStatus === 'active' || rawStatus === 'archived'
+          ? rawStatus
+          : 'inactive';
+
+      const positionRaw = v.position;
+      const positionCandidate =
+        typeof positionRaw === 'number'
+          ? positionRaw
+          : Number.parseInt(String(positionRaw ?? ''), 10);
+      const position = Number.isFinite(positionCandidate)
+        ? positionCandidate
+        : index;
+
       const options = v.options ?? v.attributes ?? {};
       validateOptions(options);
 
@@ -1012,13 +1429,14 @@ export class ProductService {
           title: v.title ?? productTitle,
           sku,
           externalRef: v.externalRef,
-          status: v.status ?? 'active',
+          status: status as any,
           isDefault: v.isDefault ?? index === 0,
-          position: v.position ?? index,
-          attributesJson: options,
+          position,
+          options: options as any,
+          attributes: options as any,
           imagesJson: this.normalizeImages(v.images),
           availability: availability as any,
-          inventoryJson: (v.inventory ?? {}) as any,
+          inventory: (v.inventory ?? {}) as any,
           requiresShipping: v.requiresShipping ?? true,
           weight: v.weight !== undefined ? v.weight.toString() : undefined,
           length: v.length !== undefined ? v.length.toString() : undefined,
@@ -1044,7 +1462,6 @@ export class ProductService {
   ) {
     const { priceListRepository, currencyRepository, priceRowRepository } =
       this.getRepos(manager);
-    const rows: PriceRow[] = [];
 
     if (prices?.length) {
       throw new BadRequestException(
@@ -1052,10 +1469,34 @@ export class ProductService {
       );
     }
 
+    const skuById = new Map((skus ?? []).map((s) => [s.id, s] as const));
+    const skuByCode = new Map(
+      (skus ?? [])
+        .filter((s) => Boolean((s as any).sku))
+        .map((s) => [String((s as any).sku), s] as const),
+    );
+
+    const managedInputs = (skuInputs ?? []).filter((s) =>
+      Object.prototype.hasOwnProperty.call(s as any, 'prices'),
+    );
+    const managedSkuIds: string[] = [];
+    const skuIdForInput = (input: CreateProductSkuDto): string | null => {
+      const id = String((input as any).id ?? '').trim();
+      if (id && skuById.has(id)) return id;
+      const code = String(input.sku ?? '').trim();
+      if (code && skuByCode.has(code)) return skuByCode.get(code)!.id;
+      return null;
+    };
+
+    for (const input of managedInputs) {
+      const id = skuIdForInput(input);
+      if (id) managedSkuIds.push(id);
+    }
+
     const allPriceListIds = new Set<string>();
-    for (const skuInput of skuInputs ?? [])
-      for (const p of skuInput?.prices ?? [])
-        allPriceListIds.add(p.priceListId);
+    for (const skuInput of managedInputs)
+      for (const p of (skuInput as any)?.prices ?? [])
+        if (p?.priceListId) allPriceListIds.add(p.priceListId);
 
     const lists = allPriceListIds.size
       ? await priceListRepository.find({
@@ -1078,38 +1519,119 @@ export class ProductService {
       return precisionByCode.get(list.currency) ?? 2;
     };
 
-    for (const [index, sku] of (skus ?? []).entries()) {
-      const skuInput = skuInputs?.[index];
-      const inputPrices = skuInput?.prices ?? [];
-      for (const p of inputPrices) {
+    if (!managedSkuIds.length) return;
+
+    const existingRows = await priceRowRepository.find({
+      where: { targetType: 'SKU' as any, targetId: In(managedSkuIds) },
+      order: { createdAt: 'DESC' },
+    });
+
+    const existingById = new Map(existingRows.map((r) => [r.id, r] as const));
+    const existingByKey = new Map<string, PriceRow>();
+    for (const r of existingRows) {
+      const key = this.priceRowIdentityKey({
+        skuId: r.targetId,
+        priceListId: r.priceListId,
+        minQuantity: r.minQuantity ?? 1,
+        maxQuantity: r.maxQuantity ?? undefined,
+        validFrom: r.validFrom ? r.validFrom.toISOString() : undefined,
+        validTo: r.validTo ? r.validTo.toISOString() : undefined,
+        metaJson: { conditions: r.selectorJson ?? {} },
+      });
+      if (!existingByKey.has(key)) existingByKey.set(key, r);
+    }
+
+    const keepIdsBySkuId = new Map<string, Set<string>>();
+    const toSave: PriceRow[] = [];
+
+    for (const skuInput of managedInputs) {
+      const skuId = skuIdForInput(skuInput);
+      if (!skuId) continue;
+      const inputPrices = ((skuInput as any).prices ?? []) as CreateProductPriceDto[];
+      const keep = new Set<string>();
+
+      for (const p of inputPrices ?? []) {
+        if (!p?.priceListId) continue;
         const precision = getPrecisionForList(p.priceListId);
         const conditions = (p.metaJson as any)?.conditions ?? {};
-        rows.push(
+        const key = this.priceRowIdentityKey({
+          skuId,
+          priceListId: p.priceListId,
+          minQuantity: p.minQuantity ?? 1,
+          maxQuantity: p.maxQuantity,
+          validFrom: p.validFrom,
+          validTo: p.validTo,
+          metaJson: p.metaJson ?? {},
+        });
+
+        const inputRowId = String((p as any).id ?? '').trim();
+        const byId = inputRowId ? existingById.get(inputRowId) : undefined;
+        const byKey = existingByKey.get(key);
+
+        const row =
+          (byId && byId.targetId === skuId ? byId : undefined) ??
+          (byKey && byKey.targetId === skuId ? byKey : undefined) ??
           priceRowRepository.create({
             priceListId: p.priceListId,
             targetType: 'SKU',
-            targetId: sku.id,
-            selectorJson: conditions,
-            currencyCode: undefined,
-            unitAmount: this.toMinorUnits(p.unitPrice, precision),
-            compareAtAmount:
-              p.compareAtPrice !== undefined
-                ? this.toMinorUnits(p.compareAtPrice, precision)
-                : undefined,
-            minQuantity: p.minQuantity ?? 1,
-            maxQuantity: p.maxQuantity,
-            validFrom: p.validFrom ? new Date(p.validFrom) : undefined,
-            validTo: p.validTo ? new Date(p.validTo) : undefined,
-            tiersJson: [],
-            metaJson: p.metaJson ?? {},
-          }),
-        );
+            targetId: skuId,
+          } as DeepPartial<PriceRow>);
+
+        Object.assign(row, {
+          priceListId: p.priceListId,
+          targetType: 'SKU',
+          targetId: skuId,
+          selectorJson: conditions,
+          currencyCode: undefined,
+          unitAmount: this.toMinorUnits(p.unitPrice, precision),
+          compareAtAmount:
+            p.compareAtPrice !== undefined
+              ? this.toMinorUnits(p.compareAtPrice, precision)
+              : undefined,
+          minQuantity: p.minQuantity ?? 1,
+          maxQuantity: p.maxQuantity,
+          validFrom: p.validFrom ? new Date(p.validFrom) : undefined,
+          validTo: p.validTo ? new Date(p.validTo) : undefined,
+          tiersJson: [],
+          metaJson: p.metaJson ?? {},
+        });
+
+        toSave.push(row);
+        if (row.id) keep.add(row.id);
+      }
+
+      keepIdsBySkuId.set(skuId, keep);
+    }
+
+    const changedSkuIds = new Set<string>();
+    if (toSave.length) {
+      const savedRows = await priceRowRepository.save(toSave);
+      for (const r of savedRows) changedSkuIds.add(r.targetId);
+
+      // Ensure keep sets include ids for newly inserted rows.
+      for (const r of savedRows) {
+        const keep = keepIdsBySkuId.get(r.targetId);
+        if (keep) keep.add(r.id);
       }
     }
 
-    if (rows.length) {
-      await priceRowRepository.save(rows);
-      await this.cache.delByPrefix('price:resolve:');
+    // Delete only removed rows for SKUs we explicitly managed.
+    for (const skuId of managedSkuIds) {
+      const keep = keepIdsBySkuId.get(skuId) ?? new Set<string>();
+      const existingIds = existingRows
+        .filter((r) => r.targetId === skuId)
+        .map((r) => r.id);
+      const deleteIds = existingIds.filter((id) => !keep.has(id));
+      if (deleteIds.length) {
+        await priceRowRepository.delete({ id: In(deleteIds) } as any);
+        changedSkuIds.add(skuId);
+      }
+    }
+
+    if (changedSkuIds.size) {
+      const skuIdList = Array.from(changedSkuIds);
+      await this.priceResolveCacheIndex.invalidateBySkuIds(skuIdList);
+      await this.priceResolveCacheIndex.invalidateByProductIds([productId]);
     }
   }
 
@@ -1245,13 +1767,16 @@ export class ProductService {
     );
   }
 
-  private async clearProductCaches(productId: string) {
+  private async clearProductCaches(productId: string, skuIds?: string[]) {
     await this.cache.delByPrefix('catalog:products:list:');
     await this.cache.del(`catalog:products:${productId}`);
     await this.cache.delByPrefix('public:catalog:products:list:');
     await this.cache.delByPrefix('public:catalog:products:');
     await this.cache.delByPrefix('public:catalog:products:view:');
-    await this.cache.delByPrefix('price:resolve:');
+    await this.priceResolveCacheIndex.invalidateByProductIds([productId]);
+    if (skuIds?.length) {
+      await this.priceResolveCacheIndex.invalidateBySkuIds(skuIds);
+    }
     await this.shippingCatalogContextCacheIndex.invalidateByProductIds([
       productId,
     ]);
@@ -1276,6 +1801,34 @@ export class ProductService {
       key: category.key,
       slug: category.slug,
       name: t?.name ?? category.key,
+    };
+  }
+
+  private categoryToPublicCategoryDto(
+    category: Category,
+    locale?: string,
+  ): PublicCategoryDto {
+    const translations = category.translations ?? [];
+    const preferred = (locale || 'en').toLowerCase();
+    const t =
+      translations.find((x) => x.locale?.toLowerCase() === preferred) ??
+      translations.find((x) => x.locale?.toLowerCase().startsWith(preferred)) ??
+      translations.find((x) => x.locale?.toLowerCase() === 'en') ??
+      translations[0];
+
+    return {
+      id: category.id,
+      taxonomyId: category.taxonomyId,
+      parentId: category.parentId ?? undefined,
+      key: category.key,
+      slug: category.slug,
+      name: t?.name ?? category.key,
+      description: t?.description ?? undefined,
+      icon: category.icon ?? undefined,
+      avatarUrl: category.avatarUrl ?? undefined,
+      imageUrl: category.imageUrl ?? undefined,
+      sortOrder: category.sortOrder ?? 0,
+      isLeaf: Boolean(category.isLeaf),
     };
   }
 
@@ -1412,7 +1965,7 @@ export class ProductService {
       id: s.id,
       code: s.sku ?? s.id,
       name: { en: s.title ?? product.title },
-      attributes: (s.attributesJson ?? {}) as any,
+      attributes: (s.attributes ?? {}) as any,
     }));
 
     return {
@@ -1494,7 +2047,7 @@ export class ProductService {
               id: s.id,
               title: s.title ?? product.title,
               sku: s.sku,
-              attributes: s.attributesJson,
+              attributes: s.attributes,
               availability: s.availability ?? {},
               images: s.imagesJson,
               price,

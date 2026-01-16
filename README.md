@@ -35,11 +35,18 @@ npm run dev:web
 
 ## Docker
 
-The provided `docker-compose.yml` starts Postgres + Redis + the API.
+The provided `docker-compose.yml` starts Postgres + Redis + pgAdmin + RedisInsight (and can also run the API container).
 
 ```bash
 docker compose up --build
 ```
+
+Helpful local URLs (defaults):
+
+- Postgres: `localhost:5432` (user: `postgres`, password: `postgres`, db: `nestjs_typeorm_postgres_db`)
+- pgAdmin: http://localhost:5050 (email: `admin@example.com`, password: `admin`) — override via `PGADMIN_DEFAULT_EMAIL` / `PGADMIN_DEFAULT_PASSWORD`
+- Redis: `localhost:6379`
+- RedisInsight: http://localhost:5540
 
 ## App docs
 

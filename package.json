@@ -5,7 +5,9 @@
     "apps/*"
   ],
   "scripts": {
+    "predev": "node scripts/ensure-docker-services.mjs",
     "dev": "concurrently -n api,web -c blue,green \"npm -w apps/api run start:dev\" \"npm -w apps/web run dev\"",
+    "predev:api": "node scripts/ensure-docker-services.mjs",
     "dev:api": "npm -w apps/api run start:dev",
     "dev:web": "npm -w apps/web run dev",
     "build": "npm -w apps/api run build && npm -w apps/web run build",

@@ -67,6 +67,7 @@ type AvailabilityDraft = {
 }
 
 type PriceDraft = {
+  id: string
   priceListId: string
   unitPrice: string
   compareAtPrice: string
@@ -83,6 +84,7 @@ type InventoryLocationDraft = {
 }
 
 type SkuDraft = {
+  id: string
   title: string
   sku: string
   externalRef: string
@@ -112,6 +114,7 @@ type ProductEditorDraft = {
   externalRef: string
   brandId: string
   categoryIds: string[]
+  tags: string[]
   optionDefinitions: OptionDefinitionDraft[]
   skus: SkuDraft[]
 }
@@ -439,6 +442,7 @@ function RichTextEditor(props: {
 }
 
 const blankPrice = (): PriceDraft => ({
+  id: '',
   priceListId: '',
   unitPrice: '',
   compareAtPrice: '',
@@ -459,6 +463,7 @@ const blankAvailability = (): AvailabilityDraft => ({
 })
 
 const blankSku = (): SkuDraft => ({
+  id: '',
   title: '',
   sku: '',
   externalRef: '',
@@ -489,6 +494,9 @@ function toDraft(product?: any): ProductEditorDraft {
     externalRef: product?.externalRef ?? '',
     brandId: product?.brandId ?? '',
     categoryIds: Array.isArray(product?.categoryIds) ? [...product.categoryIds] : [],
+    tags: Array.isArray(product?.metaJson?.tags)
+      ? product.metaJson.tags.map((t: any) => String(t).trim()).filter(Boolean)
+      : [],
     optionDefinitions: Array.isArray(product?.optionDefinitions)
       ? product.optionDefinitions.map((o: any) => ({
           key: o.key || '',
@@ -500,6 +508,7 @@ function toDraft(product?: any): ProductEditorDraft {
       : [],
     skus: Array.isArray(product?.skus) && product.skus.length
       ? product.skus.map((s: any) => ({
+          id: s.id ? String(s.id) : '',
           title: s.title || '',
           sku: s.sku || '',
           externalRef: s.externalRef || '',
@@ -535,6 +544,7 @@ function toDraft(product?: any): ProductEditorDraft {
           weightUnit: s.weightUnit === 'lb' ? 'lb' : 'kg',
           prices: Array.isArray(s.prices)
             ? s.prices.map((p: any) => ({
+                id: p.id ? String(p.id) : '',
                 priceListId: p.priceListId || '',
                 unitPrice: p.unitPrice !== undefined ? String(p.unitPrice) : '',
                 compareAtPrice: p.compareAtPrice !== undefined ? String(p.compareAtPrice) : '',
@@ -623,6 +633,9 @@ function MultiSelectAdd(props: {
   values: string[]
   onChange: (next: string[]) => void
   onAdd?: (value: string) => void
+  onClear?: () => void
+  clearLabel?: string
+  renderValue?: (value: string) => ReactNode
 }) {
   const [nextValue, setNextValue] = useState('')
 
@@ -635,7 +648,21 @@ function MultiSelectAdd(props: {
 
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium">{props.label}</label>
+      <div className="flex items-center justify-between gap-2">
+        <label className="text-sm font-medium">{props.label}</label>
+        {props.values.length && props.onClear ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={props.onClear}
+            disabled={props.disabled}
+          >
+            {props.clearLabel || 'Clear'}
+          </Button>
+        ) : null}
+      </div>
       <Select
         value={nextValue}
         onValueChange={(v) => {
@@ -661,7 +688,9 @@ function MultiSelectAdd(props: {
         <div className="flex flex-wrap gap-2">
           {props.values.map((v) => (
             <Badge key={v} variant="secondary" className="gap-1">
-              {v}
+              <span className="max-w-[220px] truncate" title={String(v)}>
+                {props.renderValue ? props.renderValue(v) : v}
+              </span>
               <button
                 type="button"
                 className="ml-1 rounded-sm hover:bg-muted"
@@ -704,10 +733,20 @@ export function ProductEditorV2(props: {
   const [draft, setDraft] = useState<ProductEditorDraft>(() => toDraft(props.product))
   const [tab, setTab] = useState<TabKey>('basics')
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [isDirty, setIsDirty] = useState(false)
+  const [dirtyCore, setDirtyCore] = useState(false)
+  const [dirtyPrices, setDirtyPrices] = useState(false)
+  const isDirty = dirtyCore || dirtyPrices
+  const setIsDirty = (next: boolean) => {
+    if (next) setDirtyCore(true)
+    else {
+      setDirtyCore(false)
+      setDirtyPrices(false)
+    }
+  }
   const uploadRef = useRef<CommonUploadHandle | null>(null)
   const [pendingMediaCount, setPendingMediaCount] = useState(0)
   const [mediaSkuIndex, setMediaSkuIndex] = useState(0)
+  const [pendingMediaSkuIndex, setPendingMediaSkuIndex] = useState<number | null>(null)
 
   const { channels } = useChannels({ token: props.token })
   const { locations } = useLocations({ token: props.token })
@@ -734,6 +773,9 @@ export function ProductEditorV2(props: {
 
   const brandsSorted = useMemo(() => [...props.brands].sort((a, b) => a.name.localeCompare(b.name)), [props.brands])
   const categoriesSorted = useMemo(() => [...props.categories].sort((a, b) => a.name.localeCompare(b.name)), [props.categories])
+
+  const channelNameByCode = useMemo(() => new Map(channels.map((c) => [c.code, c.name] as const)), [channels])
+  const locationNameByCode = useMemo(() => new Map(locations.map((l) => [l.code, l.name] as const)), [locations])
 
   const availableCountryCodes = useMemo(() => {
     const codes = new Set<string>()
@@ -803,8 +845,26 @@ export function ProductEditorV2(props: {
     return draft.categoryIds.map((id) => map.get(id)).filter(Boolean) as { id: string; name: string }[]
   }, [draft.categoryIds, props.categories])
 
+  const imagesRequired = props.mode === 'create'
+  const skuLabel = (s: SkuDraft, idx: number) => (s.sku?.trim() || s.title?.trim() || `SKU #${idx + 1}`).trim()
+  const skuIsMeaningful = (s: SkuDraft) => Boolean(s.sku?.trim() || s.title?.trim())
+  const skuImageCount = (idx: number) =>
+    (draft.skus[idx]?.images || []).length + (pendingMediaSkuIndex === idx ? pendingMediaCount : 0)
+
+  const missingImageSkuIndexes = useMemo(() => {
+    if (!imagesRequired) return []
+    return draft.skus
+      .map((s, idx) => ({ s, idx }))
+      .filter(({ s }) => skuIsMeaningful(s))
+      .filter(({ idx }) => skuImageCount(idx) === 0)
+      .map(({ idx }) => idx)
+  }, [draft.skus, imagesRequired, pendingMediaCount, pendingMediaSkuIndex])
+
   const hasSku = draft.skus.some((s) => s.sku.trim())
   const hasImages = draft.skus.some((s) => (s.images || []).length > 0) || pendingMediaCount > 0
+  const imagesComplete = imagesRequired
+    ? draft.skus.some((s) => skuIsMeaningful(s)) && missingImageSkuIndexes.length === 0
+    : hasImages
   const hasPricing = draft.skus.some((s) => s.prices.some((p) => p.priceListId.trim() && p.unitPrice.trim()))
   const skuAvailabilityConfigured = draft.skus.some(
     (s) =>
@@ -832,7 +892,7 @@ export function ProductEditorV2(props: {
         error: Object.keys(errors).some((k) => k.startsWith('options')),
       },
       media: {
-        complete: hasImages,
+        complete: imagesComplete,
         error: Object.keys(errors).some((k) => k.startsWith('images')),
       },
       skus: {
@@ -840,14 +900,15 @@ export function ProductEditorV2(props: {
         error: Object.keys(errors).some((k) => k.startsWith('skus')),
       },
     }
-  }, [draft.optionDefinitions, draft.title, errors, hasImages, hasSku])
+  }, [draft.optionDefinitions, draft.title, errors, hasSku, imagesComplete])
 
   const coreChecks = [
     { label: 'Title set', ok: Boolean(draft.title.trim()), optional: false },
     { label: 'At least one SKU', ok: hasSku, optional: false },
+    ...(imagesRequired ? [{ label: 'Images per SKU', ok: imagesComplete, optional: false }] : []),
   ]
   const optionalChecks = [
-    { label: 'Images added', ok: hasImages, optional: true },
+    ...(imagesRequired ? [] : [{ label: 'Images added', ok: hasImages, optional: true }]),
     { label: 'Pricing configured', ok: hasPricing, optional: true },
     { label: 'Availability configured', ok: skuAvailabilityConfigured, optional: true },
   ]
@@ -859,6 +920,11 @@ export function ProductEditorV2(props: {
       const max = Math.max(0, draft.skus.length - 1)
       return Math.min(prev, max)
     })
+    setPendingMediaSkuIndex((prev) => {
+      if (prev === null) return null
+      const max = Math.max(0, draft.skus.length - 1)
+      return Math.min(prev, max)
+    })
   }, [draft.skus.length])
 
   const setDefaultSkuIndex = (idx: number) => {
@@ -866,81 +932,205 @@ export function ProductEditorV2(props: {
     setIsDirty(true)
   }
 
-  const submit = async () => {
+  const submit = async (requestedMode: 'all' | 'core' | 'prices' = 'all') => {
+    const saveMode: 'all' | 'core' | 'prices' = props.mode === 'create' ? 'all' : requestedMode
+    const validateCore = saveMode !== 'prices'
+    const validatePrices = saveMode !== 'core'
+
     const nextErrors: Record<string, string> = {}
     const title = draft.title.trim()
-    if (!title) nextErrors.title = 'Title is required.'
+    if (validateCore && !title) nextErrors.title = 'Title is required.'
 
     draft.skus.forEach((s, idx) => {
-      const sku = s.sku.trim()
-      if (!sku) nextErrors[`skus.${idx}.sku`] = 'SKU code is required.'
-      if (draft.optionDefinitions.some((o) => o.required)) {
-        for (const o of draft.optionDefinitions.filter((x) => x.required)) {
-          const key = o.key.trim()
-          if (!key) continue
-          const v = (s.options?.[key] || '').trim()
-          if (!v) nextErrors[`skus.${idx}.options.${key}`] = `${o.label || key} is required.`
+      if (validateCore) {
+        const sku = s.sku.trim()
+        if (!sku) nextErrors[`skus.${idx}.sku`] = 'SKU code is required.'
+        if (draft.optionDefinitions.some((o) => o.required)) {
+          for (const o of draft.optionDefinitions.filter((x) => x.required)) {
+            const key = o.key.trim()
+            if (!key) continue
+            const v = (s.options?.[key] || '').trim()
+            if (!v) nextErrors[`skus.${idx}.options.${key}`] = `${o.label || key} is required.`
+          }
         }
       }
+
+      if (validateCore) {
+        const availabilityTouched =
+          s.availability.stockType === 'INFINITE' ||
+          s.availability.channels.length > 0 ||
+          s.availability.countries.length > 0 ||
+          s.availability.locations.length > 0 ||
+          Boolean(s.availability.stockQuantity.trim()) ||
+          Boolean(s.availability.startAt.trim()) ||
+          Boolean(s.availability.endAt.trim())
+
+        if (availabilityTouched) {
+          if (s.availability.stockType === 'FINITE') {
+            const qtyRaw = s.availability.stockQuantity.trim()
+            if (!qtyRaw) nextErrors[`skus.${idx}.availability.stockQuantity`] = 'Enter a stock quantity (0 is allowed).'
+            else {
+              const qty = intOrU(qtyRaw)
+              if (typeof qty !== 'number' || qty < 0) {
+                nextErrors[`skus.${idx}.availability.stockQuantity`] = 'Stock quantity must be 0 or more.'
+              }
+            }
+          }
+
+          const startAt = s.availability.startAt.trim()
+          const endAt = s.availability.endAt.trim()
+          if (startAt && endAt) {
+            const startMs = Date.parse(startAt)
+            const endMs = Date.parse(endAt)
+            if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && startMs >= endMs) {
+              nextErrors[`skus.${idx}.availability.endAt`] = 'End must be after start.'
+            }
+          }
+        }
+      }
+
+      if (!validatePrices) return
+
+      s.prices.forEach((p, priceIdx) => {
+        const rowTouched =
+          Boolean(p.priceListId.trim()) ||
+          Boolean(p.unitPrice.trim()) ||
+          Boolean(p.compareAtPrice.trim()) ||
+          Boolean(p.minQuantity.trim()) ||
+          Boolean(p.maxQuantity.trim()) ||
+          Boolean(p.validFrom.trim()) ||
+          Boolean(p.validTo.trim())
+        if (!rowTouched) return
+
+        if (!p.priceListId.trim()) nextErrors[`skus.${idx}.prices.${priceIdx}.priceListId`] = 'Select a price list.'
+
+        const unitRaw = p.unitPrice.trim()
+        const unit = numOrU(unitRaw)
+        if (!unitRaw) nextErrors[`skus.${idx}.prices.${priceIdx}.unitPrice`] = 'Enter a unit price.'
+        else if (typeof unit !== 'number' || unit < 0) {
+          nextErrors[`skus.${idx}.prices.${priceIdx}.unitPrice`] = 'Unit price must be 0 or more.'
+        }
+
+        const minRaw = p.minQuantity.trim()
+        const maxRaw = p.maxQuantity.trim()
+        const min = minRaw ? intOrU(minRaw) : undefined
+        const max = maxRaw ? intOrU(maxRaw) : undefined
+
+        if (minRaw && (typeof min !== 'number' || min < 1)) nextErrors[`skus.${idx}.prices.${priceIdx}.minQuantity`] = 'Min qty must be 1 or more.'
+        if (maxRaw && (typeof max !== 'number' || max < 1)) nextErrors[`skus.${idx}.prices.${priceIdx}.maxQuantity`] = 'Max qty must be 1 or more.'
+        if (typeof min === 'number' && typeof max === 'number' && min > max) {
+          nextErrors[`skus.${idx}.prices.${priceIdx}.maxQuantity`] = 'Max qty must be greater than or equal to min qty.'
+        }
+
+        const validFrom = p.validFrom.trim()
+        const validTo = p.validTo.trim()
+        if (validFrom && validTo) {
+          const fromMs = Date.parse(validFrom)
+          const toMs = Date.parse(validTo)
+          if (!Number.isNaN(fromMs) && !Number.isNaN(toMs) && fromMs >= toMs) {
+            nextErrors[`skus.${idx}.prices.${priceIdx}.validTo`] = 'Valid to must be after valid from.'
+          }
+        }
+      })
     })
 
-    if (!draft.skus.length) nextErrors.skus = 'At least one SKU is required.'
+    if (validateCore && !draft.skus.length) nextErrors.skus = 'At least one SKU is required.'
 
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length) {
       if (nextErrors.title) setTab('basics')
+      else if (Object.keys(nextErrors).some((k) => k.startsWith('images'))) setTab('media')
       else if (Object.keys(nextErrors).some((k) => k.startsWith('skus'))) setTab('skus')
       return
     }
 
-    let uploadedUrls: string[] = []
-    const pending = uploadRef.current?.getFiles() || []
-    if (pending.length) {
-      try {
-        const result = await uploadRef.current!.upload()
-        uploadedUrls = result.urls
-      } catch (e: any) {
-        toast.error('Image upload failed', { description: e?.message || 'Please try again.' })
+    let draftWithUploadedImages: ProductEditorDraft = draft
+    if (saveMode !== 'prices') {
+      let uploadedUrls: string[] = []
+      const pending = uploadRef.current?.getFiles() || []
+      if (pending.length) {
+        try {
+          const result = await uploadRef.current!.upload()
+          uploadedUrls = result.urls
+        } catch (e: any) {
+          toast.error('Image upload failed', { description: e?.message || 'Please try again.' })
+          return
+        }
+      }
+
+      const targetSkuIndex = pendingMediaSkuIndex ?? mediaSkuIndex
+      draftWithUploadedImages = uploadedUrls.length
+        ? {
+            ...draft,
+            skus: draft.skus.map((s, idx) =>
+              idx === targetSkuIndex ? { ...s, images: uniq([...(s.images || []), ...uploadedUrls]) } : s,
+            ),
+          }
+        : draft
+
+      if (uploadedUrls.length) {
+        setDraft(draftWithUploadedImages)
+        setIsDirty(true)
+      }
+    }
+
+    if (saveMode !== 'prices' && imagesRequired) {
+      const missing = draftWithUploadedImages.skus
+        .map((s, idx) => ({ s, idx }))
+        .filter(({ s }) => skuIsMeaningful(s))
+        .filter(({ s }) => (s.images || []).length === 0)
+
+      if (missing.length) {
+        const imageErrors: Record<string, string> = {}
+        for (const { idx } of missing) imageErrors[`images.${idx}`] = 'Add at least one image for this SKU.'
+        setErrors({ ...nextErrors, ...imageErrors })
+        setTab('media')
         return
       }
     }
-    const draftWithUploadedImages: ProductEditorDraft = uploadedUrls.length
-      ? {
-          ...draft,
-          skus: draft.skus.map((s, idx) =>
-            idx === mediaSkuIndex ? { ...s, images: uniq([...(s.images || []), ...uploadedUrls]) } : s,
-          ),
-        }
-      : draft
 
-    if (uploadedUrls.length) {
-      setDraft(draftWithUploadedImages)
-      setIsDirty(true)
+    const payload: any = {}
+
+    if (saveMode !== 'prices') {
+      Object.assign(payload, {
+        title,
+        description: draft.description.trim() || undefined,
+        seoTitle: draft.seoTitle.trim() || undefined,
+        seoDescription: draft.seoDescription.trim() || undefined,
+        status: draft.status,
+        externalRef: draft.externalRef.trim() || undefined,
+        brandId: draft.brandId.trim() || undefined,
+        categoryIds: draft.categoryIds.length ? draft.categoryIds : undefined,
+        optionDefinitions: draft.optionDefinitions
+          .map((o) => ({
+            key: o.key.trim(),
+            label: o.label.trim(),
+            componentType: o.componentType.trim() || undefined,
+            allowedValues: o.allowedValues.map((v) => v.trim()).filter(Boolean),
+            required: Boolean(o.required),
+          }))
+          .filter((o) => o.key && o.label),
+      })
     }
 
-    const payload: any = {
-      title,
-      description: draft.description.trim() || undefined,
-      seoTitle: draft.seoTitle.trim() || undefined,
-      seoDescription: draft.seoDescription.trim() || undefined,
-      status: draft.status,
-      externalRef: draft.externalRef.trim() || undefined,
-      brandId: draft.brandId.trim() || undefined,
-      categoryIds: draft.categoryIds.length ? draft.categoryIds : undefined,
-      optionDefinitions: draft.optionDefinitions
-        .map((o) => ({
-          key: o.key.trim(),
-          label: o.label.trim(),
-          componentType: o.componentType.trim() || undefined,
-          allowedValues: o.allowedValues.map((v) => v.trim()).filter(Boolean),
-          required: Boolean(o.required),
-        }))
-        .filter((o) => o.key && o.label),
+    if (saveMode !== 'prices') {
+      const normalizedTags = draft.tags.map((t) => t.trim()).filter(Boolean)
+      if (props.mode === 'edit') {
+        const baseMeta = props.product?.metaJson && typeof props.product.metaJson === 'object' ? props.product.metaJson : {}
+        payload.metaJson = { ...baseMeta, tags: normalizedTags }
+      } else if (normalizedTags.length) {
+        payload.metaJson = { tags: normalizedTags }
+      }
     }
 
     const ensuredDefaultIndex = draft.skus.findIndex((s) => s.isDefault)
     const defaultIdx = ensuredDefaultIndex >= 0 ? ensuredDefaultIndex : 0
-    payload.skus = draftWithUploadedImages.skus
+
+    if (props.mode === 'edit') {
+      payload.skusMode = saveMode === 'prices' ? 'patch' : 'replace'
+    }
+
+    payload.skus = (saveMode === 'prices' ? draft.skus : draftWithUploadedImages.skus)
       .map((s, idx) => {
         const options: Record<string, string> = {}
         for (const [k, v] of Object.entries(s.options || {})) {
@@ -971,42 +1161,52 @@ export function ProductEditorV2(props: {
           s.availability.startAt.trim() ||
           s.availability.endAt.trim()
 
-        return {
-          title: s.title.trim() || undefined,
+        const base: any = {
+          id: s.id?.trim() || undefined,
+          title: saveMode === 'prices' ? undefined : s.title.trim() || undefined,
           sku: s.sku.trim() || undefined,
-          externalRef: s.externalRef.trim() || undefined,
-          status: s.status,
-          isDefault: idx === defaultIdx,
-          position: intOrU(s.position) ?? undefined,
-          attributes: options,
-          options,
-          availability: skuAvailabilityHasAny
-            ? {
-                channels: s.availability.channels,
-                countries: s.availability.countries,
-                locations: s.availability.locations,
-                stock: {
-                  type: s.availability.stockType,
-                  ...(s.availability.stockType === 'FINITE' ? { quantity: intOrU(s.availability.stockQuantity) ?? 0 } : {}),
-                },
-                schedule: {
-                  startAt: s.availability.startAt.trim() || undefined,
-                  endAt: s.availability.endAt.trim() || undefined,
-                },
-                meta: {},
-              }
-            : undefined,
-          inventory,
-          images: (s.images || []).map((u) => u.trim()).filter(Boolean),
-          requiresShipping: Boolean(s.requiresShipping),
-          weight: numOrU(s.weight),
-          length: numOrU(s.length),
-          width: numOrU(s.width),
-          height: numOrU(s.height),
-          dimensionUnit: s.dimensionUnit,
-          weightUnit: s.weightUnit,
-          prices: s.prices
+          externalRef: saveMode === 'prices' ? undefined : s.externalRef.trim() || undefined,
+          status: saveMode === 'prices' ? undefined : s.status,
+          isDefault: saveMode === 'prices' ? undefined : idx === defaultIdx,
+          position: saveMode === 'prices' ? undefined : intOrU(s.position) ?? undefined,
+        }
+
+        if (saveMode !== 'prices') {
+          Object.assign(base, {
+            attributes: options,
+            options,
+            availability: skuAvailabilityHasAny
+              ? {
+                  channels: s.availability.channels,
+                  countries: s.availability.countries,
+                  locations: s.availability.locations,
+                  stock: {
+                    type: s.availability.stockType,
+                    ...(s.availability.stockType === 'FINITE' ? { quantity: intOrU(s.availability.stockQuantity) ?? 0 } : {}),
+                  },
+                  schedule: {
+                    startAt: s.availability.startAt.trim() || undefined,
+                    endAt: s.availability.endAt.trim() || undefined,
+                  },
+                  meta: {},
+                }
+              : undefined,
+            inventory,
+            images: (s.images || []).map((u) => u.trim()).filter(Boolean),
+            requiresShipping: Boolean(s.requiresShipping),
+            weight: numOrU(s.weight),
+            length: numOrU(s.length),
+            width: numOrU(s.width),
+            height: numOrU(s.height),
+            dimensionUnit: s.dimensionUnit,
+            weightUnit: s.weightUnit,
+          })
+        }
+
+        if (saveMode !== 'core') {
+          base.prices = s.prices
             .map((p) => ({
+              id: p.id?.trim() || undefined,
               priceListId: p.priceListId.trim() || undefined,
               unitPrice: numOrU(p.unitPrice),
               compareAtPrice: numOrU(p.compareAtPrice),
@@ -1016,14 +1216,21 @@ export function ProductEditorV2(props: {
               validTo: p.validTo.trim() || undefined,
               metaJson: {},
             }))
-            .filter((p) => p.priceListId && typeof p.unitPrice === 'number'),
+            .filter((p) => p.priceListId && typeof p.unitPrice === 'number')
         }
+
+        return base
       })
-      .filter((s: any) => s.sku || s.title)
+      .filter((s: any) => (saveMode === 'prices' ? s.id || s.sku : s.sku || s.title))
 
     try {
       await props.onSave(payload)
-      setIsDirty(false)
+      if (saveMode === 'prices') setDirtyPrices(false)
+      else if (saveMode === 'core') setDirtyCore(false)
+      else {
+        setDirtyCore(false)
+        setDirtyPrices(false)
+      }
     } catch {
       // Parent pages toast errors; keep draft dirty on failure.
     }
@@ -1059,20 +1266,32 @@ export function ProductEditorV2(props: {
                 </div>
                 <div>
                   <h2 className="text-2xl font-semibold">{draft.title.trim() || 'Untitled product'}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Build a complete catalog record with SKUs, pricing, and availability.
-                  </p>
+                  <p className="text-sm text-muted-foreground">Build a complete catalog record with SKUs, pricing, and availability.</p>
                 </div>
               </div>
-	              <div className="flex flex-wrap items-center gap-2">
-	                {props.headerActions}
-	                <Button onClick={submit} disabled={props.isSaving || !isDirty}>
-	                  <Save className="h-4 w-4 mr-2" />
-	                  {props.mode === 'create' ? 'Create product' : 'Save changes'}
-	                </Button>
-	                {props.onDelete ? (
-	                  <Button variant="outline" onClick={() => props.onDelete?.()} disabled={props.isSaving}>
-	                    <Trash2 className="h-4 w-4 mr-2" />
+
+              <div className="flex flex-wrap items-center gap-2">
+                {props.headerActions}
+                {props.mode === 'create' ? (
+                  <Button type="button" onClick={() => submit('all')} disabled={props.isSaving || !isDirty}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Create product
+                  </Button>
+                ) : (
+                  <>
+                    <Button type="button" onClick={() => submit('core')} disabled={props.isSaving || !dirtyCore}>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save core
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => submit('prices')} disabled={props.isSaving || !dirtyPrices}>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save prices
+                    </Button>
+                  </>
+                )}
+                {props.onDelete ? (
+                  <Button type="button" variant="outline" onClick={() => props.onDelete?.()} disabled={props.isSaving}>
+                    <Trash2 className="h-4 w-4 mr-2" />
                     Delete
                   </Button>
                 ) : null}
@@ -1344,6 +1563,18 @@ export function ProductEditorV2(props: {
                           ))}
                         </div>
                       ) : null}
+
+                      <TagInput
+                        label="Tags"
+                        values={draft.tags}
+                        onChange={(tags) => {
+                          setDraft((p) => ({ ...p, tags }))
+                          setIsDirty(true)
+                        }}
+                        placeholder="solar"
+                        helperText="Optional. Used for search and merchandising."
+                        disabled={props.isSaving}
+                      />
                     </div>
 
 	                    <Accordion type="single" collapsible className="rounded-lg border bg-muted/20">
@@ -1384,31 +1615,56 @@ export function ProductEditorV2(props: {
               </motion.div>
             </TabsContent>
 
-	            <TabsContent value="media" className="mt-0">
+              <TabsContent value="media" className="mt-0">
 	              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
 	                <AxisSection
 	                  title="Media"
-	                  description="Upload images for a specific SKU."
+                    description={imagesRequired ? 'Images are required per SKU on create.' : 'Upload images for a specific SKU.'}
 	                  icon={<Images className="h-4 w-4" />}
 	                  actions={
-	                    <Select
-	                      value={String(mediaSkuIndex)}
-	                      onValueChange={(v) => setMediaSkuIndex(Number(v))}
-	                      disabled={props.isSaving || draft.skus.length === 0}
-	                    >
-	                      <SelectTrigger className="w-[240px] h-10">
-	                        <SelectValue placeholder="Select SKU" />
-	                      </SelectTrigger>
-	                      <SelectContent>
-	                        {draft.skus.map((s, idx) => (
-	                          <SelectItem key={idx} value={String(idx)}>
-	                            {s.sku || s.title || `SKU #${idx + 1}`}{s.isDefault ? ' • default' : ''}
-	                          </SelectItem>
-	                        ))}
-	                      </SelectContent>
-	                    </Select>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={String(mediaSkuIndex)}
+                          onValueChange={(v) => setMediaSkuIndex(Number(v))}
+                          disabled={props.isSaving || draft.skus.length === 0 || pendingMediaCount > 0}
+                        >
+                          <SelectTrigger className="w-[240px] h-10">
+                            <SelectValue placeholder="Select SKU" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {draft.skus.map((s, idx) => (
+                              <SelectItem key={idx} value={String(idx)}>
+                                {skuLabel(s, idx)}{s.isDefault ? ' • default' : ''} • {skuImageCount(idx)} image
+                                {skuImageCount(idx) === 1 ? '' : 's'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {pendingMediaCount ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => uploadRef.current?.clear()}
+                            disabled={props.isSaving}
+                          >
+                            Clear pending
+                          </Button>
+                        ) : null}
+                      </div>
 	                  }
 	                >
+                    {imagesRequired && missingImageSkuIndexes.length ? (
+                      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                        Add at least one image for each SKU: {missingImageSkuIndexes.map((i) => skuLabel(draft.skus[i], i)).join(', ')}
+                      </div>
+                    ) : null}
+
+                    {pendingMediaCount ? (
+                      <div className="text-xs text-muted-foreground">
+                        Pending uploads will attach to: {pendingMediaSkuIndex === null ? skuLabel(draft.skus[mediaSkuIndex], mediaSkuIndex) : skuLabel(draft.skus[pendingMediaSkuIndex], pendingMediaSkuIndex)}
+                      </div>
+                    ) : null}
+
 	                  {draft.skus.length === 0 ? (
 	                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
 	                      Add a SKU first, then upload images to that SKU.
@@ -1468,6 +1724,7 @@ export function ProductEditorV2(props: {
 	                    token={props.token}
 	                    onFilesChange={(files) => {
 	                      setPendingMediaCount(files.length)
+                        setPendingMediaSkuIndex(files.length ? mediaSkuIndex : null)
 	                      if (files.length) setIsDirty(true)
 	                    }}
 	                    onUploaded={() => {}}
@@ -1686,7 +1943,10 @@ export function ProductEditorV2(props: {
                                 {s.sku || 'No SKU yet'} • {s.title || 'No title'}
                               </span>
                             </div>
-                            {s.isDefault ? <Badge>Default</Badge> : <Badge variant="secondary">Secondary</Badge>}
+							<div className="flex items-center gap-2">
+							  <Badge variant="outline">{(s.images || []).length} image{(s.images || []).length === 1 ? '' : 's'}</Badge>
+							  {s.isDefault ? <Badge>Default</Badge> : <Badge variant="secondary">Secondary</Badge>}
+							</div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4">
@@ -1694,6 +1954,24 @@ export function ProductEditorV2(props: {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-sm font-medium">Identifiers</div>
                               <div className="flex items-center gap-2">
+								<Button
+								  type="button"
+								  variant="outline"
+								  size="sm"
+								  onClick={() => {
+								    if (pendingMediaCount) {
+								      toast.error('Clear pending uploads first', {
+								        description: 'Pending uploads are locked to the currently selected SKU in Media.',
+								      })
+								      return
+								    }
+								    setMediaSkuIndex(idx)
+								    setTab('media')
+								  }}
+								  disabled={props.isSaving}
+								>
+								  Images
+								</Button>
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -1908,12 +2186,56 @@ export function ProductEditorV2(props: {
 	                                    }))
 	                                    setIsDirty(true)
 	                                  }}
-	                                  disabled={props.isSaving}
+                                    disabled={props.isSaving || priceLists.length === 0}
 	                                >
 	                                  <Plus className="h-4 w-4 mr-2" />
 	                                  Add price
 	                                </Button>
 	                              </div>
+
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                  <AxisStat
+                                    label="Channels"
+                                    value={s.availability.channels.length ? s.availability.channels.length : 'All'}
+                                    description={s.availability.channels.length ? 'Restricted' : 'Selling on all channels'}
+                                  />
+                                  <AxisStat
+                                    label="Locations"
+                                    value={(() => {
+                                      const cc = toCountryCode(s.availability.countries?.[0])
+                                      if (!cc) return '—'
+                                      return s.availability.locations.length ? s.availability.locations.length : 'All'
+                                    })()}
+                                    description={(() => {
+                                      const cc = toCountryCode(s.availability.countries?.[0])
+                                      if (!cc) return 'Pick a country to restrict locations'
+                                      return s.availability.locations.length ? `In ${countryLabel(cc)}` : `All in ${countryLabel(cc)}`
+                                    })()}
+                                  />
+                                  <AxisStat
+                                    label="Stock"
+                                    value={s.availability.stockType === 'INFINITE' ? 'Infinite' : s.availability.stockQuantity.trim() || 'Finite'}
+                                    description={s.availability.stockType === 'INFINITE' ? 'No quantity required' : '0 is allowed to stop sales'}
+                                  />
+                                  <AxisStat
+                                    label="Schedule"
+                                    value={(() => {
+                                      const start = s.availability.startAt.trim()
+                                      const end = s.availability.endAt.trim()
+                                      if (!start && !end) return 'Always'
+                                      if (start && !end) return 'From'
+                                      if (!start && end) return 'Until'
+                                      return 'Window'
+                                    })()}
+                                    description={(() => {
+                                      const start = s.availability.startAt.trim()
+                                      const end = s.availability.endAt.trim()
+                                      if (!start && !end) return 'No start/end limits'
+                                      if (start && end) return 'UTC start and end'
+                                      return 'UTC schedule'
+                                    })()}
+                                  />
+                                </div>
 
 		                              <div className="grid gap-4 md:grid-cols-2">
 		                                <MultiSelectAdd
@@ -1922,12 +2244,23 @@ export function ProductEditorV2(props: {
 		                                  helperText="If empty, all channels are allowed."
 		                                  triggerClassName="h-10"
 		                                  disabled={props.isSaving || channels.length === 0}
+                                      onClear={() => {
+                                        setDraft((p) => ({
+                                          ...p,
+                                          skus: p.skus.map((x, i) =>
+                                            i === idx ? { ...x, availability: { ...x.availability, channels: [] } } : x,
+                                          ),
+                                        }))
+                                        setIsDirty(true)
+                                      }}
+                                      clearLabel="Allow all"
 		                                  options={channels.map((c) => ({
 		                                    value: c.code,
 		                                    label: `${c.name} (${c.code})`,
 		                                    disabled: c.isActive === false,
 	                                  }))}
 	                                  values={s.availability.channels}
+                                      renderValue={(v) => channelNameByCode.get(v) || v}
 	                                  onChange={(next) => {
 	                                    setDraft((p) => ({
 	                                      ...p,
@@ -1997,6 +2330,16 @@ export function ProductEditorV2(props: {
 		                                      if (!cc) return 'Pick a country first.'
 		                                      return 'If empty, all locations in the selected country are allowed.'
 		                                    })()}
+                                        onClear={() => {
+                                          setDraft((p) => ({
+                                            ...p,
+                                            skus: p.skus.map((x, i) =>
+                                              i === idx ? { ...x, availability: { ...x.availability, locations: [] } } : x,
+                                            ),
+                                          }))
+                                          setIsDirty(true)
+                                        }}
+                                        clearLabel="Allow all"
 		                                    disabled={(() => {
 		                                      const cc = toCountryCode(s.availability.countries?.[0])
 		                                      if (!cc) return true
@@ -2019,6 +2362,7 @@ export function ProductEditorV2(props: {
 		                                      }))
 		                                    })()}
 		                                    values={s.availability.locations}
+                                        renderValue={(v) => locationNameByCode.get(v) || v}
 		                                    onChange={(next) => {
 		                                      setDraft((p) => ({
 		                                        ...p,
@@ -2071,6 +2415,7 @@ export function ProductEditorV2(props: {
 	                                <AxisField
 	                                  label="Stock quantity"
 	                                  description={s.availability.stockType === 'FINITE' ? undefined : 'Not required for infinite stock.'}
+                                    error={errors[`skus.${idx}.availability.stockQuantity`]}
 	                                >
 	                                  <Input
 	                                    type="number"
@@ -2117,7 +2462,11 @@ export function ProductEditorV2(props: {
 		                                    className="h-10"
 		                                  />
 		                                </AxisField>
-	                                <AxisField label="Ends at" description="Optional schedule end (UTC).">
+                                    <AxisField
+                                      label="Ends at"
+                                      description="Optional schedule end (UTC)."
+                                      error={errors[`skus.${idx}.availability.endAt`]}
+                                    >
 	                                  <Input
 	                                    type="datetime-local"
 	                                    value={toDateTimeLocalValue(s.availability.endAt)}
@@ -2146,11 +2495,24 @@ export function ProductEditorV2(props: {
 	                                  {s.prices.map((pRow, priceIdx) => {
 	                                    const selectedList = priceLists.find((pl) => pl.id === pRow.priceListId)
 	                                    const currency = selectedList?.currencyCode ? ` ${selectedList.currencyCode}` : ''
+                                      const priceListError = errors[`skus.${idx}.prices.${priceIdx}.priceListId`]
+                                      const unitPriceError = errors[`skus.${idx}.prices.${priceIdx}.unitPrice`]
+                                      const minQtyError = errors[`skus.${idx}.prices.${priceIdx}.minQuantity`]
+                                      const maxQtyError = errors[`skus.${idx}.prices.${priceIdx}.maxQuantity`]
+                                      const validToError = errors[`skus.${idx}.prices.${priceIdx}.validTo`]
 
 	                                    return (
 	                                      <div key={priceIdx} className="rounded-lg border bg-muted/20 p-4 space-y-4">
 	                                        <div className="flex items-center justify-between">
-	                                          <div className="text-sm font-medium">Price #{priceIdx + 1}</div>
+                                            <div>
+                                              <div className="text-sm font-medium">
+                                                Price #{priceIdx + 1}
+                                                {selectedList ? `  ${selectedList.name}` : ''}
+                                              </div>
+                                              <div className="text-xs text-muted-foreground">
+                                                {selectedList?.currencyCode ? `Currency: ${selectedList.currencyCode}` : 'Pick a price list to set currency'}
+                                              </div>
+                                            </div>
 	                                          <Button
 	                                            type="button"
 	                                            variant="ghost"
@@ -2162,16 +2524,17 @@ export function ProductEditorV2(props: {
 	                                                  i === idx ? { ...x, prices: x.prices.filter((_, j) => j !== priceIdx) } : x,
 	                                                ),
 	                                              }))
-	                                              setIsDirty(true)
+                                                setDirtyPrices(true)
 	                                            }}
 	                                            disabled={props.isSaving}
+                                              aria-label={`Remove price ${priceIdx + 1}`}
 	                                          >
 	                                            <Trash2 className="h-4 w-4" />
 	                                          </Button>
 	                                        </div>
 
 	                                        <div className="grid gap-4 md:grid-cols-3">
-	                                          <AxisField label="Price list" required>
+                                            <AxisField label="Price list" required error={priceListError}>
 	                                            <Select
 	                                              value={pRow.priceListId}
 	                                              onValueChange={(value) => {
@@ -2188,11 +2551,11 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 	                                              }}
 	                                              disabled={props.isSaving}
 	                                            >
-	                                              <SelectTrigger>
+                                                <SelectTrigger className="h-10">
 	                                                <SelectValue placeholder="Select" />
 	                                              </SelectTrigger>
 	                                              <SelectContent>
@@ -2205,9 +2568,10 @@ export function ProductEditorV2(props: {
 	                                            </Select>
 	                                          </AxisField>
 
-	                                          <AxisField label={`Unit price${currency}`} required>
+                                            <AxisField label={`Unit price${currency}`} required error={unitPriceError}>
 	                                            <Input
 	                                              type="number"
+                                                min={0}
 	                                              value={pRow.unitPrice}
 	                                              onChange={(e) => {
 	                                                setDraft((p) => ({
@@ -2223,7 +2587,7 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 		                                              }}
 		                                              disabled={props.isSaving}
 		                                              className="h-10"
@@ -2248,7 +2612,7 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 		                                              }}
 		                                              disabled={props.isSaving}
 		                                              className="h-10"
@@ -2257,7 +2621,7 @@ export function ProductEditorV2(props: {
 	                                        </div>
 
 	                                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-	                                          <AxisField label="Min qty">
+                                            <AxisField label="Min qty" error={minQtyError}>
 	                                            <Input
 	                                              type="number"
 	                                              min={1}
@@ -2276,13 +2640,13 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 		                                              }}
 		                                              disabled={props.isSaving}
 		                                              className="h-10"
 		                                            />
 		                                          </AxisField>
-	                                          <AxisField label="Max qty">
+                                            <AxisField label="Max qty" error={maxQtyError}>
 	                                            <Input
 	                                              type="number"
 	                                              min={1}
@@ -2301,7 +2665,7 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 		                                              }}
 		                                              disabled={props.isSaving}
 		                                              className="h-10"
@@ -2327,13 +2691,13 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 		                                              }}
 		                                              disabled={props.isSaving}
 		                                              className="h-10"
 		                                            />
 		                                          </AxisField>
-	                                          <AxisField label="Valid to">
+                                            <AxisField label="Valid to" error={validToError}>
 	                                            <Input
 	                                              type="datetime-local"
 	                                              value={toDateTimeLocalValue(pRow.validTo)}
@@ -2351,9 +2715,10 @@ export function ProductEditorV2(props: {
 	                                                      : x,
 	                                                  ),
 	                                                }))
-	                                                setIsDirty(true)
+                                                  setDirtyPrices(true)
 	                                              }}
 	                                              disabled={props.isSaving}
+                                                className="h-10"
 	                                            />
 	                                          </AxisField>
 	                                        </div>
@@ -2362,7 +2727,32 @@ export function ProductEditorV2(props: {
 	                                  })}
 	                                </div>
 	                              ) : (
-	                                <div className="text-sm text-muted-foreground">No prices for this SKU yet.</div>
+                                  <div className="rounded-lg border bg-muted/20 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                      <div className="text-sm font-medium">No prices for this SKU yet</div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Add at least one price so this SKU can be purchased.
+                                      </div>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => {
+                                        setDraft((p) => ({
+                                          ...p,
+                                          skus: p.skus.map((x, i) =>
+                                            i === idx ? { ...x, prices: [...x.prices, blankPrice()] } : x,
+                                          ),
+                                        }))
+                                        setDirtyPrices(true)
+                                      }}
+                                      disabled={props.isSaving || priceLists.length === 0}
+                                    >
+                                      <Plus className="h-4 w-4 mr-2" />
+                                      Add price
+                                    </Button>
+                                  </div>
 	                              )}
 	                            </div>
 

@@ -7,10 +7,16 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from 'class-validator';
 
 export class CreateProductPriceDto {
+  @ApiPropertyOptional({ description: 'Price row id (stable key for updates)', example: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @ApiProperty({ description: 'Price list id', example: 'uuid' })
   @IsString()
   @IsNotEmpty()

@@ -7,12 +7,18 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { CreateProductPriceDto } from './create-product-price.dto';
 import { ProductAvailabilityDto } from './product-availability.dto';
 
 export class CreateProductSkuDto {
+  @ApiPropertyOptional({ description: 'SKU id (stable key for updates)', example: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @ApiPropertyOptional({ description: 'SKU title', example: 'Black / 128 GB' })
   @IsOptional()
   @IsString()

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { AxisSection, AxisStat } from '@/components/admin/axis-ui'
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Archive, CheckCircle2, CircleDashed, Eye, Pencil, Plus, RefreshCcw, Search, Trash2 } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, Eye, Pencil, Plus, RefreshCcw, Search, Trash2 } from 'lucide-react'
 import { Link } from 'wouter'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
 import { useCatalogProducts } from '@/hooks/use-catalog-products'
@@ -21,6 +21,30 @@ export function AdminProductsPage() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [status, setStatus] = useState<CatalogProductStatus | 'all'>('all')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  const toggleExpanded = (id: string) => {
+    setExpanded((p) => ({ ...p, [id]: !p[id] }))
+  }
+
+  const formatStock = (sku: any) => {
+    const stock = sku?.availability?.stock
+    if (!stock || typeof stock !== 'object') return '—'
+    const type = String(stock.type || '').toUpperCase()
+    if (type === 'INFINITE') return '∞'
+    const qty = stock.quantity
+    return typeof qty === 'number' ? String(qty) : '0'
+  }
+
+  const pickPrimaryPrice = (prices?: any[]) => {
+    if (!Array.isArray(prices) || !prices.length) return null
+    // Prefer minQuantity=1 if available, otherwise lowest unit price.
+    const withMinOne = prices.filter((p) => (p?.minQuantity ?? 1) === 1)
+    const list = withMinOne.length ? withMinOne : prices
+    return list
+      .filter((p) => typeof p?.unitPrice === 'number' && Number.isFinite(p.unitPrice))
+      .sort((a, b) => a.unitPrice - b.unitPrice)[0] || null
+  }
 
   const rows = useMemo(() => {
     let list = productsQuery.items
@@ -153,33 +177,115 @@ export function AdminProductsPage() {
                     </TableCell>
                   </TableRow>
                 ) : null}
-                {rows.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-mono text-sm">{p.slug || '—'}</TableCell>
-                    <TableCell className="font-medium">{p.title || '—'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{p.status}</Badge>
-                    </TableCell>
-                    <TableCell>{p.skus?.length ?? 0}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/axis/products/${p.id}`}>
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button variant="ghost" size="icon" asChild>
-                          <Link href={`/axis/products/${p.id}/edit`}>
-                            <Pencil className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {rows.map((p) => {
+                  const skuCount = p.skus?.length ?? 0
+                  const isOpen = Boolean(expanded[p.id])
+                  return (
+                    <Fragment key={p.id}>
+                      <TableRow>
+                        <TableCell className="font-mono text-sm">{p.slug || '—'}</TableCell>
+                        <TableCell className="font-medium">{p.title || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{p.status}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2"
+                            onClick={() => toggleExpanded(p.id)}
+                            disabled={skuCount === 0}
+                          >
+                            {isOpen ? <ChevronDown className="h-4 w-4 mr-1" /> : <ChevronRight className="h-4 w-4 mr-1" />}
+                            {skuCount} SKU{skuCount === 1 ? '' : 's'}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="ghost" size="icon" asChild>
+                              <Link href={`/axis/products/${p.id}`}>
+                                <Eye className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                            <Button variant="ghost" size="icon" asChild>
+                              <Link href={`/axis/products/${p.id}/edit`}>
+                                <Pencil className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      {isOpen ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="bg-muted/10">
+                            <div className="p-3">
+                              <div className="text-sm font-medium mb-2">SKUs</div>
+                              <div className="rounded-lg border bg-card overflow-hidden">
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead className="w-[180px]">SKU</TableHead>
+                                      <TableHead>Options</TableHead>
+                                      <TableHead className="w-[120px]">Stock</TableHead>
+                                      <TableHead className="w-[160px]">Price</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {(p.skus || []).map((sku) => {
+                                      const options = (sku.options && typeof sku.options === 'object' ? sku.options : sku.attributes) as any
+                                      const optionEntries = options && typeof options === 'object' ? Object.entries(options) : []
+                                      const primary = pickPrimaryPrice(sku.prices)
+                                      const priceCount = Array.isArray(sku.prices) ? sku.prices.length : 0
+
+                                      return (
+                                        <TableRow key={sku.id || sku.sku}>
+                                          <TableCell className="font-mono text-sm">{sku.sku}</TableCell>
+                                          <TableCell>
+                                            {optionEntries.length ? (
+                                              <div className="flex flex-wrap gap-2">
+                                                {optionEntries
+                                                  .sort(([a], [b]) => String(a).localeCompare(String(b)))
+                                                  .map(([k, v]) => (
+                                                    <Badge key={k} variant="secondary" className="max-w-[260px] truncate">
+                                                      {String(k)}: {String(v)}
+                                                    </Badge>
+                                                  ))}
+                                              </div>
+                                            ) : (
+                                              <span className="text-sm text-muted-foreground">—</span>
+                                            )}
+                                          </TableCell>
+                                          <TableCell>{formatStock(sku)}</TableCell>
+                                          <TableCell>
+                                            {primary ? (
+                                              <div className="space-y-1">
+                                                <div className="font-medium">{primary.unitPrice}</div>
+                                                {priceCount > 1 ? (
+                                                  <div className="text-xs text-muted-foreground">{priceCount} price rows</div>
+                                                ) : null}
+                                              </div>
+                                            ) : (
+                                              <span className="text-sm text-muted-foreground">—</span>
+                                            )}
+                                          </TableCell>
+                                        </TableRow>
+                                      )
+                                    })}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </Fragment>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

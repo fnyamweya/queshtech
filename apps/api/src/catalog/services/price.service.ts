@@ -9,6 +9,7 @@ import { Currency } from '../entities/currency.entity';
 import { PriceList } from '../entities/price-list.entity';
 import { PriceRow } from '../entities/price-row.entity';
 import { AppCacheService } from 'src/common/cache/app-cache.service';
+import { PriceResolveCacheIndexService } from 'src/common/cache/price-resolve-cache-index.service';
 import {
   cacheKeyFromParts,
   cacheKeyHash,
@@ -52,6 +53,7 @@ export class PriceService {
     @InjectRepository(PriceRow)
     private readonly priceRowRepository: Repository<PriceRow>,
     private readonly cache: AppCacheService,
+    private readonly priceResolveCacheIndex: PriceResolveCacheIndexService,
   ) {}
 
   private formatMinorUnits(amount: string, precision: number) {
@@ -279,9 +281,10 @@ export class PriceService {
       context: options.context,
     });
 
-    return this.cache.remember(
-      cacheKey,
-      async () => {
+    const cached = await this.cache.get<ResolvedPrice>(cacheKey);
+    if (cached) return cached;
+
+    const value = await (async () => {
         let priceList = await this.selectPriceList({
           priceListId: options.priceListId,
           currencyCode: normalizedCurrencyCode,
@@ -380,8 +383,14 @@ export class PriceService {
             ? this.formatMinorUnits(foundRow.compareAtAmount, precision)
             : undefined,
         };
-      },
-      { ttlSeconds: this.cacheTtlSeconds },
+      })();
+
+    await this.cache.set(cacheKey, value, this.cacheTtlSeconds);
+    await this.priceResolveCacheIndex.indexCacheKey(
+      cacheKey,
+      { productId: options.productId, skuId: options.productSkuId },
+      this.cacheTtlSeconds,
     );
+    return value;
   }
 }
