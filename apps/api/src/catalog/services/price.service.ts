@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Raw, Repository } from 'typeorm';
 import { Currency } from '../entities/currency.entity';
 import { PriceList } from '../entities/price-list.entity';
-import { PriceRow } from '../entities/price-row.entity';
+import { ProductSkuPricing } from '../entities/product-sku-pricing.entity';
 import { AppCacheService } from 'src/common/cache/app-cache.service';
 import { PriceResolveCacheIndexService } from 'src/common/cache/price-resolve-cache-index.service';
 import {
@@ -50,8 +50,8 @@ export class PriceService {
     private readonly priceListRepository: Repository<PriceList>,
     @InjectRepository(Currency)
     private readonly currencyRepository: Repository<Currency>,
-    @InjectRepository(PriceRow)
-    private readonly priceRowRepository: Repository<PriceRow>,
+    @InjectRepository(ProductSkuPricing)
+    private readonly skuPricingRepository: Repository<ProductSkuPricing>,
     private readonly cache: AppCacheService,
     private readonly priceResolveCacheIndex: PriceResolveCacheIndexService,
   ) {}
@@ -188,11 +188,44 @@ export class PriceService {
     return score;
   }
 
-  private selectRowCandidate(candidates: PriceRow[], context?: PricingContext) {
+  private selectRowCandidate(
+    candidates: ProductSkuPricing[],
+    context?: PricingContext,
+    conflictPolicy: PriceList['conflictPolicy'] = 'HIGHEST_PRIORITY',
+  ) {
     if (!candidates.length) return null;
     if (!context) return candidates[0];
 
-    let best: PriceRow | null = null;
+    if (conflictPolicy === 'FIRST_MATCH') {
+      for (const candidate of candidates) {
+        if (this.matchesRowContext(candidate.selectorJson, context)) {
+          return candidate;
+        }
+      }
+      return null;
+    }
+
+    if (conflictPolicy === 'LOWEST_PRICE') {
+      let best: ProductSkuPricing | null = null;
+      let bestAmount: bigint | null = null;
+
+      for (const candidate of candidates) {
+        if (!this.matchesRowContext(candidate.selectorJson, context)) continue;
+        const amount = BigInt(candidate.unitAmount);
+        if (best === null || bestAmount === null || amount < bestAmount) {
+          best = candidate;
+          bestAmount = amount;
+        } else if (amount === bestAmount) {
+          if (candidate.minQuantity > (best?.minQuantity ?? 0)) {
+            best = candidate;
+          }
+        }
+      }
+
+      return best;
+    }
+
+    let best: ProductSkuPricing | null = null;
     let bestScore = -1;
     let bestMin = -1;
 
@@ -231,15 +264,29 @@ export class PriceService {
     }
 
     const order = { priority: 'DESC' as const, createdAt: 'DESC' as const };
+    const now = new Date();
+    const validFrom = Raw(
+      (alias) => `(${alias} IS NULL OR ${alias} <= :now)`,
+      { now },
+    );
+    const validTo = Raw(
+      (alias) => `(${alias} IS NULL OR ${alias} >= :now)`,
+      { now },
+    );
     if (options.currencyCode) {
       return this.priceListRepository.findOne({
-        where: { currency: options.currencyCode, status: 'active' },
+        where: {
+          currency: options.currencyCode,
+          status: 'active',
+          validFrom,
+          validTo,
+        },
         order,
       });
     }
 
     const any = await this.priceListRepository.findOne({
-      where: { status: 'active' },
+      where: { status: 'active', validFrom, validTo },
       order,
     });
     if (any) return any;
@@ -250,8 +297,18 @@ export class PriceService {
     const normalized =
       await this.normalizeAndValidateCurrencyCode(currencyCode);
     if (!normalized) throw new BadRequestException('currencyCode is required');
+    const now = new Date();
     return this.priceListRepository.findOne({
-      where: { currency: normalized, status: 'active' },
+      where: {
+        currency: normalized,
+        status: 'active',
+        validFrom: Raw((alias) => `(${alias} IS NULL OR ${alias} <= :now)`, {
+          now,
+        }),
+        validTo: Raw((alias) => `(${alias} IS NULL OR ${alias} >= :now)`, {
+          now,
+        }),
+      },
       order: { priority: 'DESC', createdAt: 'DESC' },
     });
   }
@@ -298,7 +355,7 @@ export class PriceService {
         const now = new Date();
         const attemptFindRows = async (
           pl: PriceList,
-          scope: { productId?: string; productSkuId?: string },
+          scope: { productSkuId?: string },
         ) => {
           const where: Record<string, unknown> = {
             priceListId: pl.id,
@@ -316,32 +373,24 @@ export class PriceService {
             }),
           };
 
-          if (scope.productSkuId) {
-            where.targetType = 'SKU';
-            where.targetId = scope.productSkuId;
-          }
-          if (scope.productId) {
-            where.targetType = 'PRODUCT';
-            where.targetId = scope.productId;
-          }
+          if (scope.productSkuId) where.productSkuId = scope.productSkuId;
 
-          const candidates = await this.priceRowRepository.find({
+          const candidates = await this.skuPricingRepository.find({
             where,
             order: { minQuantity: 'DESC', createdAt: 'DESC' },
           });
 
-          return this.selectRowCandidate(candidates, options.context);
+          return this.selectRowCandidate(
+            candidates,
+            options.context,
+            pl.conflictPolicy,
+          );
         };
 
-        let foundRow: PriceRow | null = null;
+        let foundRow: ProductSkuPricing | null = null;
         if (options.productSkuId) {
           foundRow = await attemptFindRows(priceList, {
             productSkuId: options.productSkuId,
-          });
-        }
-        if (!foundRow && options.productId) {
-          foundRow = await attemptFindRows(priceList, {
-            productId: options.productId,
           });
         }
 
@@ -356,11 +405,6 @@ export class PriceService {
             if (options.productSkuId) {
               foundRow = await attemptFindRows(pl, {
                 productSkuId: options.productSkuId,
-              });
-            }
-            if (!foundRow && options.productId) {
-              foundRow = await attemptFindRows(pl, {
-                productId: options.productId,
               });
             }
             if (foundRow) {

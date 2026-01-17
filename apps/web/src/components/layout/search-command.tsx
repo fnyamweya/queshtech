@@ -230,6 +230,8 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
     callback()
   }
 
+  const showQuickActions = !query.trim()
+
   const navigateToSearchResults = (q: string) => {
     const trimmed = q.trim()
     if (!trimmed) return
@@ -253,7 +255,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
       title="Search QueshTech"
       description="Search products, categories, and brands"
       contentClassName="sm:max-w-2xl"
-      commandClassName="rounded-2xl"
+      commandClassName="rounded-2xl bg-popover/95 supports-[backdrop-filter]:bg-popover/80"
     >
       <CommandInput
         placeholder="Search products, categories, brands..."
@@ -261,7 +263,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
         onValueChange={setQuery}
         className="text-[15px]"
       />
-      <CommandList className="max-h-[420px] sm:max-h-[520px]">
+      <CommandList className={showQuickActions ? 'max-h-[360px] sm:max-h-[460px]' : 'max-h-[420px] sm:max-h-[520px]'}>
         <CommandEmpty>
           {isAlgoliaLoading ? (
             <div className="flex flex-col items-center gap-3 py-8">
@@ -292,7 +294,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
               <CommandItem
                 value={`search-all-${query.trim()}`}
                 onSelect={() => handleSelect(() => navigateToSearchResults(query))}
-                className="flex items-center gap-3 px-3 py-2.5"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
               >
                 <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                   <MagnifyingGlass size={18} weight="bold" />
@@ -314,15 +316,17 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
 
         {!query.trim() && recentSearches.length > 0 ? (
           <>
-            <CommandGroup heading="Recent">
+            <CommandGroup heading="Recent searches">
               {recentSearches.slice(0, 8).map((term) => (
                 <CommandItem
                   key={term}
                   value={`recent-${term}`}
                   onSelect={() => handleSelect(() => navigateToSearchResults(term))}
-                  className="flex items-center gap-3 px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
                 >
-                  <ClockCounterClockwise className="text-muted-foreground" size={18} />
+                  <div className="h-9 w-9 rounded-lg bg-muted/60 flex items-center justify-center">
+                    <ClockCounterClockwise className="text-muted-foreground" size={18} />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm truncate">{term}</p>
                   </div>
@@ -336,9 +340,11 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                     setRecentSearches([])
                   })
                 }
-                className="flex items-center gap-3 px-3 py-2.5 text-destructive"
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-destructive transition-colors data-[selected=true]:bg-destructive/10"
               >
-                <Trash size={18} weight="bold" />
+                <div className="h-9 w-9 rounded-lg bg-destructive/10 flex items-center justify-center">
+                  <Trash size={18} weight="bold" />
+                </div>
                 <span>Clear recent searches</span>
               </CommandItem>
             </CommandGroup>
@@ -354,9 +360,11 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                   key={category.id}
                   value={`category-${category.name}`}
                   onSelect={() => handleSelect(() => setLocation(`/category/${category.slug}`))}
-                  className="flex items-center gap-3 px-3 py-2.5"
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
                 >
-                  <Tag className="text-primary" size={18} />
+                  <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                    <Tag size={18} weight="bold" />
+                  </div>
                   <div className="flex flex-col">
                     <span className="font-medium">{highlightText(category.name, query)}</span>
                     <span className="text-xs text-muted-foreground">
@@ -377,7 +385,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                 key={product.id}
                 value={`product-${algoliaEnabled ? product.title : product.name}`}
                 onSelect={() => handleSelect(() => setLocation(`/product/${product.slug}`))}
-                className="flex items-start gap-3 px-3 py-2.5"
+                className="flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
               >
                 <div className="w-12 h-12 rounded-md overflow-hidden bg-muted flex-shrink-0">
                   <img
@@ -410,29 +418,38 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
             ))}
           </CommandGroup>
         )}
-
-        {!query && (
-          <>
-            <CommandSeparator />
-            <CommandGroup heading="Quick Actions">
-              <CommandItem
-                onSelect={() => handleSelect(() => setLocation('/category/smartphones-tablets'))}
-                className="flex items-center gap-3"
-              >
-                <Sparkle className="text-accent" size={18} />
-                <span>View New Arrivals</span>
-              </CommandItem>
-              <CommandItem
-                onSelect={() => handleSelect(() => setLocation('/category/gaming'))}
-                className="flex items-center gap-3"
-              >
-                <Package className="text-accent" size={18} />
-                <span>Gaming Deals</span>
-              </CommandItem>
-            </CommandGroup>
-          </>
-        )}
       </CommandList>
+
+      {showQuickActions ? (
+        <div className="border-t border-border/60 bg-popover/95 backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+          <CommandGroup heading="Quick actions" className="p-2">
+            <CommandItem
+              onSelect={() => handleSelect(() => setLocation('/category/smartphones-tablets'))}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
+            >
+              <div className="h-9 w-9 rounded-lg bg-accent/20 text-accent flex items-center justify-center">
+                <Sparkle size={18} weight="bold" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">View New Arrivals</p>
+                <p className="text-xs text-muted-foreground truncate">Fresh drops and just-in items</p>
+              </div>
+            </CommandItem>
+            <CommandItem
+              onSelect={() => handleSelect(() => setLocation('/category/gaming'))}
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
+            >
+              <div className="h-9 w-9 rounded-lg bg-accent/20 text-accent flex items-center justify-center">
+                <Package size={18} weight="bold" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">Gaming Deals</p>
+                <p className="text-xs text-muted-foreground truncate">Top discounts on gear</p>
+              </div>
+            </CommandItem>
+          </CommandGroup>
+        </div>
+      ) : null}
 
       <div className="border-t px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
         <div className="flex items-center gap-4">

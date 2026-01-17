@@ -4,6 +4,7 @@ import { IsIn, IsOptional, IsString } from 'class-validator';
 import { PaginationFilterDto } from 'src/common/dto/pagination-filter.dto';
 
 const PRICE_LIST_STATUS = ['active', 'inactive', 'archived'] as const;
+const PRICE_LIST_TYPE = ['BASE', 'OVERRIDE', 'PROMOTION', 'CONTRACT'] as const;
 
 export class FilterPriceListDto extends PaginationFilterDto {
   @ApiPropertyOptional({ description: 'Search by code or name', example: 'ke' })
@@ -30,4 +31,13 @@ export class FilterPriceListDto extends PaginationFilterDto {
   @IsOptional()
   @IsIn(PRICE_LIST_STATUS as unknown as string[])
   status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by type',
+    enum: PRICE_LIST_TYPE,
+    example: 'BASE',
+  })
+  @IsOptional()
+  @IsIn(PRICE_LIST_TYPE as unknown as string[])
+  type?: string;
 }

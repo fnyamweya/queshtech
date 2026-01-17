@@ -3,7 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { PriceService } from '../price.service';
 import { PriceList } from '../../entities/price-list.entity';
 import { Currency } from '../../entities/currency.entity';
-import { PriceRow } from '../../entities/price-row.entity';
+import { ProductSkuPricing } from '../../entities/product-sku-pricing.entity';
 import { AppCacheService } from 'src/common/cache/app-cache.service';
 
 describe('PriceService', () => {
@@ -17,35 +17,31 @@ describe('PriceService', () => {
     findOne: jest.fn(),
     exist: jest.fn(),
   };
-  const priceRowRepo = {
+  const skuPricingRepo = {
     find: jest.fn(),
   };
   const cache = {
-    remember: jest.fn(),
+    get: jest.fn(),
+    set: jest.fn(),
   };
   let cacheStore: Map<string, unknown>;
 
   beforeEach(async () => {
     cacheStore = new Map<string, unknown>();
-    cache.remember.mockImplementation(
-      async (
-        key: string,
-        factory: () => Promise<unknown>,
-        _options?: { ttlSeconds: number },
-      ) => {
-        if (cacheStore.has(key)) return cacheStore.get(key);
-        const value = await factory();
-        cacheStore.set(key, value);
-        return value;
-      },
-    );
+    cache.get.mockImplementation(async (key: string) => cacheStore.get(key));
+    cache.set.mockImplementation(async (key: string, value: unknown) => {
+      cacheStore.set(key, value);
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PriceService,
         { provide: getRepositoryToken(PriceList), useValue: priceListRepo },
         { provide: getRepositoryToken(Currency), useValue: currencyRepo },
-        { provide: getRepositoryToken(PriceRow), useValue: priceRowRepo },
+        {
+          provide: getRepositoryToken(ProductSkuPricing),
+          useValue: skuPricingRepo,
+        },
         { provide: AppCacheService, useValue: cache },
       ],
     }).compile();
@@ -71,14 +67,14 @@ describe('PriceService', () => {
       code: 'KES',
       precision: 2,
     } as Currency);
-    priceRowRepo.find.mockResolvedValueOnce([
+    skuPricingRepo.find.mockResolvedValueOnce([
       {
         id: 'r1',
         unitAmount: '100000',
         compareAtAmount: '120000',
         minQuantity: 1,
         selectorJson: {},
-      } as unknown as PriceRow,
+      } as unknown as ProductSkuPricing,
     ]);
 
     const resolved = await service.resolveSkuPrice({
@@ -107,14 +103,14 @@ describe('PriceService', () => {
       code: 'KES',
       precision: 2,
     } as Currency);
-    priceRowRepo.find.mockResolvedValueOnce([
+    skuPricingRepo.find.mockResolvedValueOnce([
       {
         id: 'r2',
         unitAmount: '20000',
         compareAtAmount: '25000',
         minQuantity: 1,
         selectorJson: {},
-      } as unknown as PriceRow,
+      } as unknown as ProductSkuPricing,
     ]);
 
     const resolved = await service.resolveSkuPrice({
@@ -142,13 +138,13 @@ describe('PriceService', () => {
       code: 'KES',
       precision: 2,
     } as Currency);
-    priceRowRepo.find.mockResolvedValueOnce([
+    skuPricingRepo.find.mockResolvedValueOnce([
       {
         id: 'r3',
         unitAmount: '10000',
         minQuantity: 1,
         selectorJson: {},
-      } as unknown as PriceRow,
+      } as unknown as ProductSkuPricing,
     ]);
 
     const r1 = await service.resolveSkuPrice({
@@ -164,7 +160,7 @@ describe('PriceService', () => {
 
     expect(r1.unitPrice).toBe('100.00');
     expect(r2.unitPrice).toBe('100.00');
-    expect(priceRowRepo.find).toHaveBeenCalledTimes(1);
+    expect(skuPricingRepo.find).toHaveBeenCalledTimes(1);
   });
 
   it('prefers context-matched prices over generic ones', async () => {
@@ -180,19 +176,19 @@ describe('PriceService', () => {
       code: 'KES',
       precision: 2,
     } as Currency);
-    priceRowRepo.find.mockResolvedValueOnce([
+    skuPricingRepo.find.mockResolvedValueOnce([
       {
         id: 'r4',
         unitAmount: '9000',
         minQuantity: 1,
         selectorJson: { customerGroupIds: ['vip'] },
-      } as unknown as PriceRow,
+      } as unknown as ProductSkuPricing,
       {
         id: 'r5',
         unitAmount: '10000',
         minQuantity: 1,
         selectorJson: {},
-      } as unknown as PriceRow,
+      } as unknown as ProductSkuPricing,
     ]);
 
     const resolved = await service.resolveSkuPrice({

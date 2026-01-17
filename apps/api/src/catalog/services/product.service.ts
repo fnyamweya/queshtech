@@ -23,7 +23,7 @@ import { ProductChannel } from '../entities/product-channel.entity';
 import { ProductContextOverride } from '../entities/product-context-override.entity';
 import { PriceList } from '../entities/price-list.entity';
 import { Currency } from '../entities/currency.entity';
-import { PriceRow } from '../entities/price-row.entity';
+import { ProductSkuPricing } from '../entities/product-sku-pricing.entity';
 import { Category } from '../entities/category.entity';
 import { Channel } from 'src/channels/entities/channel.entity';
 import { CreateProductDto, ProductStatus } from '../dto/create-product.dto';
@@ -101,8 +101,8 @@ export class ProductService {
     private readonly productChannelRepository: Repository<ProductChannel>,
     @InjectRepository(ProductContextOverride)
     private readonly productContextOverrideRepository: Repository<ProductContextOverride>,
-    @InjectRepository(PriceRow)
-    private readonly priceRowRepository: Repository<PriceRow>,
+    @InjectRepository(ProductSkuPricing)
+    private readonly skuPricingRepository: Repository<ProductSkuPricing>,
     @InjectRepository(PriceList)
     private readonly priceListRepository: Repository<PriceList>,
     @InjectRepository(Currency)
@@ -136,7 +136,7 @@ export class ProductService {
         productCategoryRepository: this.productCategoryRepository,
         productChannelRepository: this.productChannelRepository,
         productContextOverrideRepository: this.productContextOverrideRepository,
-        priceRowRepository: this.priceRowRepository,
+        skuPricingRepository: this.skuPricingRepository,
         priceListRepository: this.priceListRepository,
         currencyRepository: this.currencyRepository,
         categoryRepository: this.categoryRepository,
@@ -153,7 +153,7 @@ export class ProductService {
       productContextOverrideRepository: manager.getRepository(
         ProductContextOverride,
       ),
-      priceRowRepository: manager.getRepository(PriceRow),
+      skuPricingRepository: manager.getRepository(ProductSkuPricing),
       priceListRepository: manager.getRepository(PriceList),
       currencyRepository: manager.getRepository(Currency),
       categoryRepository: manager.getRepository(Category),
@@ -381,7 +381,7 @@ export class ProductService {
 
     if (skuInputs) {
       await this.dataSource.transaction(async (manager) => {
-        const { skuRepository, priceRowRepository } = this.getRepos(manager);
+        const { skuRepository, skuPricingRepository } = this.getRepos(manager);
 
         const optionDefs = (payload.optionDefinitions ??
           (saved.optionDefinitionsJson as any) ??
@@ -405,9 +405,8 @@ export class ProductService {
 
         // Clean up prices for removed SKUs only.
         if (deletedSkuIds.length) {
-          await priceRowRepository.delete({
-            targetType: 'SKU' as any,
-            targetId: In(deletedSkuIds),
+          await skuPricingRepository.delete({
+            productSkuId: In(deletedSkuIds),
           });
         }
 
@@ -452,8 +451,8 @@ export class ProductService {
     const skuIds = skuEntities.map((s) => s.id).filter(Boolean);
     if (!skuIds.length) return;
 
-    const rows = await this.priceRowRepository.find({
-      where: { targetType: 'SKU' as any, targetId: In(skuIds) },
+    const rows = await this.skuPricingRepository.find({
+      where: { productSkuId: In(skuIds) },
       order: { createdAt: 'DESC' },
     });
 
@@ -499,9 +498,9 @@ export class ProductService {
         metaJson: r.metaJson ?? {},
       };
 
-      const listForSku = bySkuId.get(r.targetId);
+      const listForSku = bySkuId.get(r.productSkuId);
       if (listForSku) listForSku.push(dto);
-      else bySkuId.set(r.targetId, [dto]);
+      else bySkuId.set(r.productSkuId, [dto]);
     }
 
     for (const s of skuEntities) {
@@ -967,11 +966,21 @@ export class ProductService {
     const precision = currency?.precision ?? 2;
 
     const conditions = (payload.metaJson as any)?.conditions ?? {};
+    const minQuantity = payload.minQuantity ?? 1;
+    if (minQuantity > 1) {
+      const baseExists = await this.skuPricingRepository.exist({
+        where: { productSkuId: sku.id, priceListId: list.id, minQuantity: 1 },
+      });
+      if (!baseExists) {
+        throw new BadRequestException(
+          'Base price (minQuantity=1) is required before adding tiered pricing',
+        );
+      }
+    }
 
-    const row = this.priceRowRepository.create({
+    const row = this.skuPricingRepository.create({
       priceListId: list.id,
-      targetType: 'SKU',
-      targetId: sku.id,
+      productSkuId: sku.id,
       selectorJson: conditions,
       currencyCode: undefined,
       unitAmount: this.toMinorUnits(payload.unitPrice, precision),
@@ -979,15 +988,14 @@ export class ProductService {
         payload.compareAtPrice !== undefined
           ? this.toMinorUnits(payload.compareAtPrice, precision)
           : undefined,
-      minQuantity: payload.minQuantity ?? 1,
+      minQuantity,
       maxQuantity: payload.maxQuantity,
       validFrom: payload.validFrom ? new Date(payload.validFrom) : undefined,
       validTo: payload.validTo ? new Date(payload.validTo) : undefined,
-      tiersJson: [],
       metaJson: payload.metaJson ?? {},
     });
 
-    const saved = await this.priceRowRepository.save(row);
+    const saved = await this.skuPricingRepository.save(row);
     await this.priceResolveCacheIndex.invalidateBySkuIds([sku.id]);
     await this.priceResolveCacheIndex.invalidateByProductIds([sku.productId]);
     await this.clearProductCaches(sku.productId, [sku.id]);
@@ -1012,8 +1020,8 @@ export class ProductService {
     if (sku.productId !== productId) {
       throw new BadRequestException('SKU does not belong to product');
     }
-    const rows = await this.priceRowRepository.find({
-      where: { targetType: 'SKU' as any, targetId: sku.id },
+    const rows = await this.skuPricingRepository.find({
+      where: { productSkuId: sku.id },
       order: { createdAt: 'DESC' },
     });
 
@@ -1064,7 +1072,7 @@ export class ProductService {
       .join(',')}}`;
   }
 
-  private priceRowIdentityKey(args: {
+  private skuPricingIdentityKey(args: {
     skuId: string;
     priceListId: string;
     minQuantity?: number;
@@ -1460,7 +1468,7 @@ export class ProductService {
     skuInputs: CreateProductSkuDto[] | undefined,
     manager?: EntityManager,
   ) {
-    const { priceListRepository, currencyRepository, priceRowRepository } =
+    const { priceListRepository, currencyRepository, skuPricingRepository } =
       this.getRepos(manager);
 
     if (prices?.length) {
@@ -1521,16 +1529,16 @@ export class ProductService {
 
     if (!managedSkuIds.length) return;
 
-    const existingRows = await priceRowRepository.find({
-      where: { targetType: 'SKU' as any, targetId: In(managedSkuIds) },
+    const existingRows = await skuPricingRepository.find({
+      where: { productSkuId: In(managedSkuIds) },
       order: { createdAt: 'DESC' },
     });
 
     const existingById = new Map(existingRows.map((r) => [r.id, r] as const));
-    const existingByKey = new Map<string, PriceRow>();
+    const existingByKey = new Map<string, ProductSkuPricing>();
     for (const r of existingRows) {
-      const key = this.priceRowIdentityKey({
-        skuId: r.targetId,
+      const key = this.skuPricingIdentityKey({
+        skuId: r.productSkuId,
         priceListId: r.priceListId,
         minQuantity: r.minQuantity ?? 1,
         maxQuantity: r.maxQuantity ?? undefined,
@@ -1542,19 +1550,33 @@ export class ProductService {
     }
 
     const keepIdsBySkuId = new Map<string, Set<string>>();
-    const toSave: PriceRow[] = [];
+    const toSave: ProductSkuPricing[] = [];
 
     for (const skuInput of managedInputs) {
       const skuId = skuIdForInput(skuInput);
       if (!skuId) continue;
       const inputPrices = ((skuInput as any).prices ?? []) as CreateProductPriceDto[];
+      const hasBaseByList = new Map<string, boolean>();
+      for (const p of inputPrices ?? []) {
+        if (!p?.priceListId) continue;
+        if ((p.minQuantity ?? 1) <= 1) hasBaseByList.set(p.priceListId, true);
+      }
+
+      for (const p of inputPrices ?? []) {
+        if (!p?.priceListId) continue;
+        if (!hasBaseByList.get(p.priceListId)) {
+          throw new BadRequestException(
+            'Base price (minQuantity=1) is required for each price list',
+          );
+        }
+      }
       const keep = new Set<string>();
 
       for (const p of inputPrices ?? []) {
         if (!p?.priceListId) continue;
         const precision = getPrecisionForList(p.priceListId);
         const conditions = (p.metaJson as any)?.conditions ?? {};
-        const key = this.priceRowIdentityKey({
+        const key = this.skuPricingIdentityKey({
           skuId,
           priceListId: p.priceListId,
           minQuantity: p.minQuantity ?? 1,
@@ -1569,18 +1591,16 @@ export class ProductService {
         const byKey = existingByKey.get(key);
 
         const row =
-          (byId && byId.targetId === skuId ? byId : undefined) ??
-          (byKey && byKey.targetId === skuId ? byKey : undefined) ??
-          priceRowRepository.create({
+          (byId && byId.productSkuId === skuId ? byId : undefined) ??
+          (byKey && byKey.productSkuId === skuId ? byKey : undefined) ??
+          skuPricingRepository.create({
             priceListId: p.priceListId,
-            targetType: 'SKU',
-            targetId: skuId,
-          } as DeepPartial<PriceRow>);
+            productSkuId: skuId,
+          } as DeepPartial<ProductSkuPricing>);
 
         Object.assign(row, {
           priceListId: p.priceListId,
-          targetType: 'SKU',
-          targetId: skuId,
+          productSkuId: skuId,
           selectorJson: conditions,
           currencyCode: undefined,
           unitAmount: this.toMinorUnits(p.unitPrice, precision),
@@ -1592,7 +1612,6 @@ export class ProductService {
           maxQuantity: p.maxQuantity,
           validFrom: p.validFrom ? new Date(p.validFrom) : undefined,
           validTo: p.validTo ? new Date(p.validTo) : undefined,
-          tiersJson: [],
           metaJson: p.metaJson ?? {},
         });
 
@@ -1605,12 +1624,12 @@ export class ProductService {
 
     const changedSkuIds = new Set<string>();
     if (toSave.length) {
-      const savedRows = await priceRowRepository.save(toSave);
-      for (const r of savedRows) changedSkuIds.add(r.targetId);
+      const savedRows = await skuPricingRepository.save(toSave);
+      for (const r of savedRows) changedSkuIds.add(r.productSkuId);
 
       // Ensure keep sets include ids for newly inserted rows.
       for (const r of savedRows) {
-        const keep = keepIdsBySkuId.get(r.targetId);
+        const keep = keepIdsBySkuId.get(r.productSkuId);
         if (keep) keep.add(r.id);
       }
     }
@@ -1619,11 +1638,11 @@ export class ProductService {
     for (const skuId of managedSkuIds) {
       const keep = keepIdsBySkuId.get(skuId) ?? new Set<string>();
       const existingIds = existingRows
-        .filter((r) => r.targetId === skuId)
+        .filter((r) => r.productSkuId === skuId)
         .map((r) => r.id);
       const deleteIds = existingIds.filter((id) => !keep.has(id));
       if (deleteIds.length) {
-        await priceRowRepository.delete({ id: In(deleteIds) } as any);
+        await skuPricingRepository.delete({ id: In(deleteIds) } as any);
         changedSkuIds.add(skuId);
       }
     }

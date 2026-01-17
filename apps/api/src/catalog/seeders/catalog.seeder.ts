@@ -7,7 +7,7 @@ import { Product } from '../entities/product.entity';
 import { ProductSku } from '../entities/product-sku.entity';
 import { Currency } from '../entities/currency.entity';
 import { PriceList } from '../entities/price-list.entity';
-import { PriceRow } from '../entities/price-row.entity';
+import { ProductSkuPricing } from '../entities/product-sku-pricing.entity';
 import { ProductStatus } from '../dto/create-product.dto';
 import { CategoryService } from '../services/category.service';
 import { ProductService } from '../services/product.service';
@@ -30,8 +30,8 @@ export class CatalogSeeder {
     private readonly currencyRepository: Repository<Currency>,
     @InjectRepository(PriceList)
     private readonly priceListRepository: Repository<PriceList>,
-    @InjectRepository(PriceRow)
-    private readonly priceRowRepository: Repository<PriceRow>,
+    @InjectRepository(ProductSkuPricing)
+    private readonly skuPricingRepository: Repository<ProductSkuPricing>,
     @InjectRepository(Brand)
     private readonly brandRepository: Repository<Brand>,
     private readonly categoryService: CategoryService,
@@ -55,10 +55,10 @@ export class CatalogSeeder {
   }
 
   private async resetCatalogData(): Promise<void> {
-    await this.priceRowRepository
+    await this.skuPricingRepository
       .createQueryBuilder()
       .delete()
-      .from(PriceRow)
+      .from(ProductSkuPricing)
       .execute();
     await this.skuRepository
       .createQueryBuilder()
@@ -203,8 +203,12 @@ export class CatalogSeeder {
         priority: 1,
         scope: {},
         stackingPolicy: 'EXCLUSIVE',
-        matchPolicy: 'HIGHEST_PRIORITY',
+        conflictPolicy: 'HIGHEST_PRIORITY',
         stopAfterMatch: true,
+        type: 'BASE',
+        validFrom: undefined,
+        validTo: undefined,
+        metaJson: { priority: 1 },
       });
       priceList = await this.priceListRepository.save(priceList);
       this.logger.log('Created price list retail-kes');

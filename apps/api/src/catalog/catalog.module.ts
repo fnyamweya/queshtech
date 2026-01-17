@@ -13,7 +13,7 @@ import { ProductSku } from './entities/product-sku.entity';
 import { ProductCategory } from './entities/product-category.entity';
 import { Currency } from './entities/currency.entity';
 import { PriceList } from './entities/price-list.entity';
-import { PriceRow } from './entities/price-row.entity';
+import { ProductSkuPricing } from './entities/product-sku-pricing.entity';
 import { Brand } from './entities/brand.entity';
 import { ProductChannel } from './entities/product-channel.entity';
 import { ProductContextOverride } from './entities/product-context-override.entity';
@@ -78,7 +78,7 @@ import { SettingModule } from '../setting/setting.module';
       ProductRatingSummary,
       Currency,
       PriceList,
-      PriceRow,
+      ProductSkuPricing,
       Brand,
       Channel,
     ]),

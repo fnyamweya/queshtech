@@ -7,8 +7,9 @@ import {
 } from 'typeorm';
 
 export type PriceListStatus = 'active' | 'inactive' | 'archived';
+export type PriceListType = 'BASE' | 'OVERRIDE' | 'PROMOTION' | 'CONTRACT';
 export type PriceListStackingPolicy = 'EXCLUSIVE' | 'STACKABLE';
-export type PriceListMatchPolicy =
+export type PriceListConflictPolicy =
   | 'HIGHEST_PRIORITY'
   | 'LOWEST_PRICE'
   | 'FIRST_MATCH';
@@ -27,6 +28,9 @@ export class PriceList {
   @Column({ name: 'currency_code', type: 'char', length: 3 })
   currency: string;
 
+  @Column({ name: 'type', type: 'text', default: 'BASE' })
+  type: PriceListType;
+
   @Column({ name: 'priority', type: 'int', default: 0 })
   priority: number;
 
@@ -40,10 +44,19 @@ export class PriceList {
   stackingPolicy: PriceListStackingPolicy;
 
   @Column({ name: 'match_policy', type: 'text', default: 'HIGHEST_PRIORITY' })
-  matchPolicy: PriceListMatchPolicy;
+  conflictPolicy: PriceListConflictPolicy;
 
   @Column({ name: 'stop_after_match', type: 'boolean', default: true })
   stopAfterMatch: boolean;
+
+  @Column({ name: 'valid_from', type: 'timestamptz', nullable: true })
+  validFrom?: Date;
+
+  @Column({ name: 'valid_to', type: 'timestamptz', nullable: true })
+  validTo?: Date;
+
+  @Column({ name: 'meta_json', type: 'jsonb', default: () => "'{}'::jsonb" })
+  metaJson: Record<string, unknown>;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

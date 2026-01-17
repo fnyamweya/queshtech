@@ -37,12 +37,19 @@ export class PricingService {
       code: payload.code,
       name: payload.name,
       currency: currencyCode,
+      type: (payload.type as any) ?? 'BASE',
       priority: payload.priority ?? 0,
       scope: payload.scope ?? {},
       status: (payload.status as any) ?? 'active',
       stackingPolicy: (payload.stackingPolicy as any) ?? 'EXCLUSIVE',
-      matchPolicy: (payload.matchPolicy as any) ?? 'HIGHEST_PRIORITY',
+      conflictPolicy:
+        (payload.conflictPolicy as any) ??
+        (payload.matchPolicy as any) ??
+        'HIGHEST_PRIORITY',
       stopAfterMatch: payload.stopAfterMatch ?? true,
+      validFrom: payload.validFrom ? new Date(payload.validFrom) : undefined,
+      validTo: payload.validTo ? new Date(payload.validTo) : undefined,
+      metaJson: payload.metaJson ?? {},
     });
 
     return this.priceListRepo.save(row);
@@ -77,6 +84,10 @@ export class PricingService {
 
     if (filter.status) {
       qb.andWhere('pl.status = :status', { status: filter.status });
+    }
+
+    if (filter.type) {
+      qb.andWhere('pl.type = :type', { type: filter.type });
     }
 
     if (!getAll) {
@@ -122,12 +133,25 @@ export class PricingService {
       existing.scope = payload.scope ?? {};
     if (typeof payload.status !== 'undefined')
       existing.status = payload.status as any;
+    if (typeof payload.type !== 'undefined') existing.type = payload.type as any;
     if (typeof payload.stackingPolicy !== 'undefined')
       existing.stackingPolicy = payload.stackingPolicy as any;
+    if (typeof payload.conflictPolicy !== 'undefined')
+      existing.conflictPolicy = payload.conflictPolicy as any;
     if (typeof payload.matchPolicy !== 'undefined')
-      existing.matchPolicy = payload.matchPolicy as any;
+      existing.conflictPolicy = payload.matchPolicy as any;
     if (typeof payload.stopAfterMatch !== 'undefined')
       existing.stopAfterMatch = payload.stopAfterMatch;
+    if (typeof payload.validFrom !== 'undefined')
+      existing.validFrom = payload.validFrom
+        ? new Date(payload.validFrom)
+        : undefined;
+    if (typeof payload.validTo !== 'undefined')
+      existing.validTo = payload.validTo
+        ? new Date(payload.validTo)
+        : undefined;
+    if (typeof payload.metaJson !== 'undefined')
+      existing.metaJson = payload.metaJson ?? {};
 
     return this.priceListRepo.save(existing);
   }
