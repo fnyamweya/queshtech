@@ -46,6 +46,7 @@ type AlgoliaCatalogConfig = {
 @Injectable()
 export class AlgoliaCatalogService {
   private readonly logger = new Logger(AlgoliaCatalogService.name);
+  private readonly autoAppliedSettings = new Set<string>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -72,8 +73,76 @@ export class AlgoliaCatalogService {
     return p ? `${p}_${b}` : b;
   }
 
+  private defaultIndexSettings(): Record<string, unknown> {
+    return {
+      searchableAttributes: [
+        'title',
+        'slug',
+        'description',
+        'brandName',
+        'categoryNames',
+        'skuCodes',
+        'skuTitles',
+        'tags',
+        'externalRef',
+      ],
+      attributesForFaceting: [
+        'filterOnly(status)',
+        'filterOnly(brandId)',
+        'filterOnly(categoryIds)',
+        'filterOnly(tags)',
+      ],
+    };
+  }
+
+  private mergeIndexSettings(
+    base: Record<string, unknown>,
+    override?: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (!override) return base;
+
+    const out: Record<string, unknown> = { ...base, ...override };
+    for (const key of ['searchableAttributes', 'attributesForFaceting'] as const) {
+      const a = Array.isArray((base as any)[key]) ? ((base as any)[key] as unknown[]) : [];
+      const b = Array.isArray((override as any)[key]) ? ((override as any)[key] as unknown[]) : [];
+      const merged = Array.from(new Set([...a, ...b])).filter(Boolean);
+      if (merged.length) out[key] = merged;
+    }
+    return out;
+  }
+
+  private isEmptyObject(value: unknown): boolean {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value) && Object.keys(value as any).length === 0;
+  }
+
+  private async maybeAutoApplySettings(cfg: AlgoliaCatalogConfig, indexName: string): Promise<boolean> {
+    if (this.autoAppliedSettings.has(indexName)) return false;
+    if (this.configService.get<string>('NODE_ENV') === 'production') return false;
+
+    const client = await this.getAdminClient(cfg);
+    if (!client) return false;
+
+    const index = client.initIndex(indexName);
+    const settings = this.mergeIndexSettings(
+      this.defaultIndexSettings(),
+      this.isEmptyObject(cfg.indexSettingsJson) ? undefined : cfg.indexSettingsJson,
+    );
+
+    try {
+      const task = await index.setSettings(settings as any);
+      if ((task as any)?.taskID) {
+        await (index as any).waitTask((task as any).taskID);
+      }
+      this.autoAppliedSettings.add(indexName);
+      this.logger.log(`Auto-applied baseline Algolia settings for index "${indexName}"`);
+      return true;
+    } catch (e: any) {
+      this.logger.warn(`Failed to auto-apply Algolia settings for "${indexName}": ${e?.message ?? e}`);
+      return false;
+    }
+  }
+
   private async getConfig(): Promise<AlgoliaCatalogConfig> {
-    // Prefer DB settings (admin-configurable); fall back to env for bootstrap.
     const fromDb = await this.settingService.getAlgoliaCatalogSettingsInternalSafe();
 
     const enabledRaw =
@@ -186,7 +255,25 @@ export class AlgoliaCatalogService {
     } as any;
 
     const q = (input.q ?? '').trim();
-    const res = await index.search(q, params);
+    let res = await index.search(q, params);
+
+    // If the index is missing faceting/filter settings, `filters` can silently eliminate all results.
+    // In non-prod, attempt to auto-apply a baseline settings payload (requires admin key).
+    if ((res as any)?.nbHits === 0) {
+      const probe = await index.search(q, { ...(params as any), filters: undefined, hitsPerPage: 1, page: 0 });
+      if ((probe as any)?.nbHits > 0) {
+        const applied = await this.maybeAutoApplySettings(cfg, indexName);
+        if (applied) {
+          res = await index.search(q, params);
+        } else {
+          this.logger.warn(
+            `Algolia filters eliminated results for index "${indexName}". ` +
+              `Consider setting attributesForFaceting to include filterOnly(status).`,
+          );
+          res = await index.search(q, { ...(params as any), filters: undefined });
+        }
+      }
+    }
 
     return {
       indexName,
@@ -289,8 +376,14 @@ export class AlgoliaCatalogService {
     const indexName = this.buildIndexName(cfg.indexPrefix, cfg.productsIndexName);
     const index = client.initIndex(indexName);
 
-    const settings = cfg.indexSettingsJson ?? {};
-    await index.setSettings(settings as any);
+    const settings = this.mergeIndexSettings(
+      this.defaultIndexSettings(),
+      this.isEmptyObject(cfg.indexSettingsJson) ? undefined : cfg.indexSettingsJson,
+    );
+    const task = await index.setSettings(settings as any);
+    if ((task as any)?.taskID) {
+      await (index as any).waitTask((task as any).taskID);
+    }
     return { indexName };
   }
 
