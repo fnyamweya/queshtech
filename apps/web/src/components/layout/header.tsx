@@ -123,7 +123,9 @@ export function Header({
         isMegaMenuOpen
           ? 'bg-background shadow-sm'
           : isScrolled
-            ? 'bg-background/80 backdrop-blur-xl shadow-sm'
+            ? location === '/'
+              ? 'bg-background shadow-sm'
+              : 'bg-background/80 backdrop-blur-xl shadow-sm'
             : 'bg-background'
       )}
     >

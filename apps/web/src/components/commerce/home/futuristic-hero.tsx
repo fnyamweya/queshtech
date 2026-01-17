@@ -92,9 +92,9 @@ export function FuturisticHero({ slides }: FuturisticHeroProps) {
             src={current.image}
             alt=""
             className={cn(
-              'h-full w-full object-cover',
-              'brightness-[0.78] contrast-[1.08] saturate-[0.92]',
-              'dark:brightness-[0.58] dark:contrast-[1.1] dark:saturate-[0.95]'
+              'h-full w-full object-cover object-[50%_0%]',
+              'brightness-[0.92] contrast-[1.06] saturate-[0.98]',
+              'dark:brightness-[0.78] dark:contrast-[1.08] dark:saturate-[0.95]'
             )}
             initial={{ scale: 1.03 }}
             animate={{ scale: 1 }}
@@ -103,12 +103,12 @@ export function FuturisticHero({ slides }: FuturisticHeroProps) {
         </motion.div>
       </AnimatePresence>
 
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/10 to-background/65" />
-      <div className="absolute inset-0 bg-gradient-to-r from-background/10 via-transparent to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 h-80 bg-gradient-to-b from-transparent via-background/35 to-background" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background/55" />
+      <div className="absolute inset-0 bg-gradient-to-r from-background/5 via-transparent to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-56 sm:h-64 bg-gradient-to-b from-transparent via-background/25 to-background" />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px]">
-        <div className="relative pt-10 sm:pt-14 lg:pt-16 pb-28 min-h-[420px] sm:min-h-[520px] lg:min-h-[560px]">
+        <div className="relative pt-10 sm:pt-12 lg:pt-14 pb-20 sm:pb-24 min-h-[360px] sm:min-h-[440px] lg:min-h-[500px]">
           <Link
             href={current.cta.href}
             className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -129,7 +129,7 @@ export function FuturisticHero({ slides }: FuturisticHeroProps) {
                 size="icon"
                 className={cn(
                   'hidden sm:flex',
-                  'absolute left-0 sm:-left-2 top-1/2 -translate-y-1/2',
+                  'absolute left-0 sm:-left-2 top-[clamp(9rem,30vh,13rem)] -translate-y-1/2',
                   'h-12 w-12 rounded-lg bg-background/35 hover:bg-background/55',
                   'border border-border/60 shadow-sm z-20'
                 )}
@@ -144,7 +144,7 @@ export function FuturisticHero({ slides }: FuturisticHeroProps) {
                 size="icon"
                 className={cn(
                   'hidden sm:flex',
-                  'absolute right-0 sm:-right-2 top-1/2 -translate-y-1/2',
+                  'absolute right-0 sm:-right-2 top-[clamp(9rem,30vh,13rem)] -translate-y-1/2',
                   'h-12 w-12 rounded-lg bg-background/35 hover:bg-background/55',
                   'border border-border/60 shadow-sm z-20'
                 )}
