@@ -130,6 +130,22 @@ Common high-impact overrides:
 
 ---
 
+## Compare + “why recommended”
+
+```tsx
+<ProductCard
+  product={product}
+  behavior={{
+    discovery: {
+      reason: { show: true, text: 'Trending' },
+      compare: { show: true, selected: isSelected, onToggle: ({ selected }) => setSelected(selected) },
+    },
+  }}
+/>
+```
+
+---
+
 ## Real commerce modes (add / subscribe / quote / preorder / notify)
 
 ### B2B quote with quantity stepper
@@ -213,4 +229,3 @@ const adapter = {
 - `actions.mode='hover'` automatically behaves like `always` on touch devices.
 - `a11y.linkStrategy='wrap'` (default) makes the whole card clickable without nesting links.
 - Use `a11y.linkStrategy='title-only'` for very dense tables/lists where nested interactions are common.
-

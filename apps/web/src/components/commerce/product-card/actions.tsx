@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
+  ArrowsLeftRight,
   BellRinging,
   ChatCircleDots,
   Eye,
@@ -81,7 +82,11 @@ export function ProductCardActions<TProduct>({
   const showAdd = Boolean(actions.showAdd && purchase.onPurchase)
   const showQuickView = Boolean(actions.showQuickView && actions.onQuickView)
   const showWishlist = Boolean(actions.showWishlist && actions.onWishlistToggle)
-  const showAny = effectiveMode !== 'none' && (showAdd || showQuickView || showWishlist)
+  const compare = ctx.behavior.discovery.compare
+  const showCompare = Boolean(compare?.show && compare.onToggle)
+  const compareSelected = Boolean(compare?.selected)
+
+  const showAny = effectiveMode !== 'none' && (showAdd || showQuickView || showWishlist || showCompare)
   if (!showAny) return null
 
   const [inlineFeedback, setInlineFeedback] = useState<string | null>(null)
@@ -153,6 +158,12 @@ export function ProductCardActions<TProduct>({
     const next = !wishlisted
     actions.onWishlistToggle?.({ product: ctx.product, selected: next })
     track(next ? 'wishlist_add' : 'wishlist_remove')
+  }
+
+  const compareClick = () => {
+    const next = !compareSelected
+    compare?.onToggle?.({ product: ctx.product, selected: next })
+    track('compare_toggle', { selected: next })
   }
 
   const container =
@@ -262,6 +273,24 @@ export function ProductCardActions<TProduct>({
         >
           {wishlisted ? <HeartStraight size={16} weight="fill" /> : <Heart size={16} />}
           {placement === 'inline' ? 'Wishlist' : null}
+        </Button>
+      ) : null}
+
+      {showCompare ? (
+        <Button
+          size="sm"
+          variant={compareSelected ? 'default' : 'secondary'}
+          className="rounded-full"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            compareClick()
+          }}
+          aria-pressed={compareSelected}
+          aria-label={compareSelected ? 'Remove from compare' : 'Add to compare'}
+        >
+          <ArrowsLeftRight size={16} weight="bold" />
+          {placement === 'inline' ? 'Compare' : null}
         </Button>
       ) : null}
 
