@@ -1,10 +1,11 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AdminUser, AdminLoginData } from '@/types/admin'
 import { apiRequest, apiUrl, ApiError, extractAccessToken, extractRefreshToken } from '@/lib/api'
 import { createApiClient } from '@/lib/api-client'
 import { useStorage } from '@/hooks/use-storage'
 import { endpoints } from '@/lib/endpoints'
+import { getJwtExpiryMs } from '@/lib/jwt'
 
 type RefreshResult = { success: boolean; accessToken?: string; refreshToken?: string; error?: string }
 
@@ -47,15 +48,19 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [adminUser, setAdminUser] = useStorage<AdminUser | null>('admin-auth-user', null)
   const [accessToken, setAccessToken] = useStorage<string | null>('admin-access-token', null)
   const [refreshToken, setRefreshToken] = useStorage<string | null>('admin-refresh-token', null)
+  const [accessTokenExpiresAt, setAccessTokenExpiresAt] = useStorage<string | null>('admin-access-token-expires-at', null)
   const [isLoading, setIsLoading] = useState(false)
   const [isReady, setIsReady] = useState(false)
+
+  const refreshInFlightRef = useRef<Promise<RefreshResult> | null>(null)
 
   const clearAuth = useCallback(() => {
     setAdminUser(() => null)
     setAccessToken(null)
     setRefreshToken(null)
+    setAccessTokenExpiresAt(null)
     setIsReady(true)
-  }, [setAccessToken, setAdminUser, setRefreshToken])
+  }, [setAccessToken, setAccessTokenExpiresAt, setAdminUser, setRefreshToken])
 
   const login = async (data: AdminLoginData): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true)
@@ -75,6 +80,13 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       // Important: clear any previously stored token if backend didn't return one.
       setAccessToken(nextAccessToken || null)
       setRefreshToken(nextRefreshToken || null)
+
+      if (nextAccessToken) {
+        const expMs = getJwtExpiryMs(nextAccessToken)
+        if (expMs) setAccessTokenExpiresAt(new Date(expMs).toISOString())
+      } else {
+        setAccessTokenExpiresAt(null)
+      }
 
       setAdminUser(() =>
         toAdminUser(payload, {
@@ -195,29 +207,99 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     clearAuth()
   }
 
-  const refreshSession = useCallback(async (): Promise<{ success: boolean; accessToken?: string; refreshToken?: string; error?: string }> => {
-    // Policy: do not attempt client-side refresh.
-    // Treat refresh as unrecoverable and require re-login.
-    clearAuth()
-    return { success: false, error: refreshToken ? 'Session refresh disabled. Please sign in again.' : 'Missing refresh token' }
-  }, [clearAuth, refreshToken, setAccessToken, setRefreshToken])
+  const refreshSession = useCallback(async (): Promise<RefreshResult> => {
+    if (!refreshToken) {
+      clearAuth()
+      return { success: false, error: 'Missing refresh token' }
+    }
+
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current
+    }
+
+    refreshInFlightRef.current = (async () => {
+      try {
+        const payload = await apiRequest<any>(endpoints.auth.refresh, {
+          method: 'POST',
+          body: { refreshToken },
+        })
+
+        const body = (payload as any)?.data ?? payload
+        const nextAccessToken = extractAccessToken(body)
+        const nextRefreshToken = extractRefreshToken(body)
+
+        if (!nextAccessToken) {
+          clearAuth()
+          return { success: false, error: 'Refresh did not return an access token' }
+        }
+
+        setAccessToken(nextAccessToken)
+        if (nextRefreshToken) setRefreshToken(nextRefreshToken)
+
+        const expFromResponse = (body as any)?.accessTokenExpiresAt
+        const expMs = typeof expFromResponse === 'string' ? Date.parse(expFromResponse) : getJwtExpiryMs(nextAccessToken)
+        if (expMs && Number.isFinite(expMs)) setAccessTokenExpiresAt(new Date(expMs).toISOString())
+
+        return { success: true, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined }
+      } catch (error) {
+        clearAuth()
+        const message = error instanceof ApiError ? error.message : 'Session refresh failed'
+        return { success: false, error: message }
+      } finally {
+        refreshInFlightRef.current = null
+      }
+    })()
+
+    return refreshInFlightRef.current
+  }, [clearAuth, refreshToken, setAccessToken, setAccessTokenExpiresAt, setRefreshToken])
 
   const authorizedRequest = useCallback(
     async <T,>(path: string, options?: Omit<Parameters<typeof apiRequest<T>>[1], 'token'>) => {
+      const attempt = async (tokenOverride?: string | null) => {
+        return apiRequest<T>(path, (tokenOverride ?? accessToken)
+          ? { ...(options || {}), token: tokenOverride ?? accessToken }
+          : { ...(options || {}) })
+      }
+
       try {
         // Prefer bearer token when available; otherwise fall back to cookie-based session.
-        return await apiRequest<T>(path, accessToken ? { ...(options || {}), token: accessToken } : { ...(options || {}) })
+        return await attempt(null)
       } catch (error) {
-        // Policy: treat auth failures as a hard stop.
-        // Do not attempt refresh or retries to avoid loops.
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-          clearAuth()
+        if (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403)) {
+          throw error
         }
-        throw error
+
+        const refreshed = await refreshSession()
+        if (!refreshed.success || !refreshed.accessToken) {
+          throw error
+        }
+
+        return await attempt(refreshed.accessToken)
       }
     },
-    [accessToken, clearAuth]
+    [accessToken, refreshSession]
   )
+
+  useEffect(() => {
+    if (!accessToken || !refreshToken) return
+
+    const expMs = getJwtExpiryMs(accessToken)
+    if (!expMs) return
+
+    const skewMs = 30_000
+    const delayMs = expMs - Date.now() - skewMs
+
+    if (delayMs <= 0) {
+      void refreshSession()
+      return
+    }
+
+    const t = window.setTimeout(() => {
+      void refreshSession()
+    }, delayMs)
+
+    return () => window.clearTimeout(t)
+  }, [accessToken, refreshToken, refreshSession])
 
   const getProfile = useCallback(async () => {
     const payload = await authorizedRequest<any>(endpoints.auth.profile, { method: 'GET' })

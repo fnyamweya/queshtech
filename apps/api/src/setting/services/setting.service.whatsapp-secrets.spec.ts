@@ -38,13 +38,15 @@ class InMemorySettingRepo {
 describe('SettingService.updateWhatsappSecrets', () => {
   it('stores secrets encrypted and never returns their values', async () => {
     const repo = new InMemorySettingRepo();
+    const oauthRepo = {} as any;
+    const roleRepo = {} as any;
     const cache = { del: jest.fn() } as any;
     const crypto = {
       encrypt: jest.fn((v: string) => `enc:v1:${v}`),
       decrypt: jest.fn((v: string) => v),
     } as any;
 
-    const svc = new SettingService(repo as any, cache, crypto);
+    const svc = new SettingService(repo as any, oauthRepo, roleRepo, cache, crypto);
 
     const res = await svc.updateWhatsappSecrets({
       appSecret: 'app_secret_value',
@@ -78,13 +80,15 @@ describe('SettingService.updateWhatsappSecrets', () => {
 
   it('is idempotent and can update one secret at a time', async () => {
     const repo = new InMemorySettingRepo();
+    const oauthRepo = {} as any;
+    const roleRepo = {} as any;
     const cache = { del: jest.fn() } as any;
     const crypto = {
       encrypt: jest.fn((v: string) => `enc:v1:${v}`),
       decrypt: jest.fn((v: string) => v),
     } as any;
 
-    const svc = new SettingService(repo as any, cache, crypto);
+    const svc = new SettingService(repo as any, oauthRepo, roleRepo, cache, crypto);
 
     await svc.updateWhatsappSecrets({ appSecret: 'a' });
     await svc.updateWhatsappSecrets({ webhookVerifyToken: 'b' });

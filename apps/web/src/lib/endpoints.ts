@@ -23,6 +23,7 @@ const o = (path: string) => {
 export const endpoints = {
   auth: {
     profile: p('/auth/profile'),
+    refresh: p('/auth/refresh'),
     customerRegister: p('/auth/customer/register'),
     customerLogin: p('/auth/customer/login'),
     passwordSet: p('/auth/password-set'),
@@ -157,6 +158,16 @@ export const endpoints = {
         return query ? p(`${base}?${query}`) : p(base)
       },
     publicSearchConfig: p('/public/catalog/search/config'),
+    publicSearchProducts: (params?: { q?: string; page?: number; limit?: number; filters?: string }) => {
+      if (!params) return p('/public/catalog/search/products')
+      const qs = new URLSearchParams()
+      if (params.q) qs.set('q', params.q)
+      if (typeof params.page === 'number') qs.set('page', String(params.page))
+      if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
+      if (params.filters) qs.set('filters', params.filters)
+      const query = qs.toString()
+      return query ? p(`/public/catalog/search/products?${query}`) : p('/public/catalog/search/products')
+    },
 
     // Admin search ops (Algolia)
     algoliaTest: p('/catalog/search/algolia/test'),

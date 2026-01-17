@@ -38,6 +38,7 @@ import { OAuthCredentialsService } from './services/oauth-credentials.service';
 import { OAuthExchangeService } from './services/oauth-exchange.service';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import { AppleOAuthGuard } from './guards/apple-oauth.guard';
+import { SettingModule } from 'src/setting/setting.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { AppleOAuthGuard } from './guards/apple-oauth.guard';
       AdminProfile,
     ]),
     WhatsappModule,
+    SettingModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

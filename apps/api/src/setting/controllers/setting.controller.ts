@@ -49,6 +49,10 @@ import {
   UpsertAlgoliaCatalogSettingDto,
 } from '../dto/algolia-catalog-setting.dto';
 import {
+  AuthTokenSettingsResponseDto,
+  UpsertAuthTokenSettingsDto,
+} from '../dto/auth-token-settings.dto';
+import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
@@ -66,6 +70,43 @@ import {
 @ApiBearerAuth('access-token')
 export class SettingController {
   constructor(private readonly settingService: SettingService) {}
+
+  @Get('auth/tokens')
+  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'read' })
+  @ApiOperation({
+    summary: 'Get auth token TTL settings (admin vs customer)',
+  })
+  @ApiOkResponse({
+    description: 'Auth token TTL settings retrieved successfully',
+    type: AuthTokenSettingsResponseDto,
+  })
+  async getAuthTokenSettings(): Promise<ApiResponse<AuthTokenSettingsResponseDto>> {
+    const data = await this.settingService.getAuthTokenSettings();
+    return ResponseUtil.success(data, 'Auth token TTL settings retrieved successfully');
+  }
+
+  @Post('auth/tokens')
+  @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'update' })
+  @LogActivity({
+    action: ActivityAction.UPDATE,
+    description: 'Auth token TTL settings updated successfully',
+    resourceType: 'auth-token-ttl-settings',
+  })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Upsert auth token TTL settings (admin vs customer)',
+  })
+  @ApiBody({ type: UpsertAuthTokenSettingsDto })
+  @ApiOkResponse({
+    description: 'Auth token TTL settings updated successfully',
+    type: AuthTokenSettingsResponseDto,
+  })
+  async upsertAuthTokenSettings(
+    @Body() dto: UpsertAuthTokenSettingsDto,
+  ): Promise<ApiResponse<AuthTokenSettingsResponseDto>> {
+    const data = await this.settingService.upsertAuthTokenSettings(dto);
+    return ResponseUtil.success(data, 'Auth token TTL settings updated successfully');
+  }
 
   @Get('algolia/catalog')
   @RequirePermissions({ module: PermissionModule.SETTINGS, permission: 'read' })

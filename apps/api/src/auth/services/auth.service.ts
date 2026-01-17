@@ -61,6 +61,7 @@ import {
 } from '../workers/auth-otp.worker';
 import { QueueService } from 'src/queue/queue.service';
 import { OAuthCredentialsService } from './oauth-credentials.service';
+import { SettingService } from 'src/setting/services/setting.service';
 
 @Injectable()
 export class AuthService {
@@ -94,7 +95,41 @@ export class AuthService {
     private readonly rateLimitService: RateLimitService,
     private readonly queueService: QueueService,
     private readonly oauthCredentialsService: OAuthCredentialsService,
+    private readonly settingService: SettingService,
   ) {}
+
+  private resolveAuthActor(user: User): 'admin' | 'customer' {
+    const roleName = (user as any)?.role?.name
+      ? String((user as any).role.name).toLowerCase()
+      : '';
+
+    if (roleName === 'customer') return 'customer';
+    if (roleName.includes('admin')) return 'admin';
+
+    if ((user as any)?.customerProfile) return 'customer';
+    if ((user as any)?.adminProfile) return 'admin';
+
+    return 'customer';
+  }
+
+  private async getTokenTtlsSeconds(actor: 'admin' | 'customer'): Promise<{
+    accessTtlSeconds: number;
+    refreshTtlSeconds: number;
+  }> {
+    const settings = await this.settingService.getAuthTokenSettings();
+
+    if (actor === 'admin') {
+      return {
+        accessTtlSeconds: settings.adminAccessTokenTtlSeconds,
+        refreshTtlSeconds: settings.adminRefreshTokenTtlSeconds,
+      };
+    }
+
+    return {
+      accessTtlSeconds: settings.customerAccessTokenTtlSeconds,
+      refreshTtlSeconds: settings.customerRefreshTokenTtlSeconds,
+    };
+  }
 
   private async ensureCustomerProfile(userId: string) {
     const existingProfile = await this.customerProfileRepository.findOne({
@@ -554,6 +589,8 @@ export class AuthService {
         'role',
         'role.rolePermissions',
         'role.rolePermissions.permission',
+        'adminProfile',
+        'customerProfile',
       ],
     });
 
@@ -565,7 +602,7 @@ export class AuthService {
       throw new UnauthorizedException('Account is disabled');
     }
 
-    return this.completeLogin(user, request);
+    return this.completeLogin(user, request, this.resolveAuthActor(user));
   }
 
   async loginCustomerWithOAuth(oauthProfile: OAuthAdminProfile, request: Request) {
@@ -708,7 +745,7 @@ export class AuthService {
       throw new UnauthorizedException('Unable to load customer account');
     }
 
-    return this.completeLogin(hydratedUser, request);
+    return this.completeLogin(hydratedUser, request, 'customer');
   }
 
   private signTwoFactorLoginToken(userId: string): string {
@@ -861,7 +898,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.completeLogin(fullUser, request);
+    return this.completeLogin(fullUser, request, this.resolveAuthActor(fullUser));
   }
 
   async registerCustomer(
@@ -922,7 +959,7 @@ export class AuthService {
     });
     await this.customerProfileRepository.save(profile);
 
-    return this.completeLogin(savedUser, request);
+    return this.completeLogin(savedUser, request, 'customer');
   }
 
   async registerAdmin(adminRegisterDto: AdminRegisterDto, request: Request) {
@@ -968,7 +1005,7 @@ export class AuthService {
 
     await this.ensureAdminProfile(savedUser.id);
 
-    return this.completeLogin(savedUser, request);
+    return this.completeLogin(savedUser, request, 'admin');
   }
 
   async createUserInvite(
@@ -1166,7 +1203,26 @@ export class AuthService {
       request,
     );
 
-    return this.completeLogin(updatedUser, request);
+    const hydratedUser = await this.userRepository.findOne({
+      where: { id: updatedUser.id },
+      relations: [
+        'role',
+        'role.rolePermissions',
+        'role.rolePermissions.permission',
+        'adminProfile',
+        'customerProfile',
+      ],
+    });
+
+    if (!hydratedUser) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return this.completeLogin(
+      hydratedUser,
+      request,
+      this.resolveAuthActor(hydratedUser),
+    );
   }
 
   async declineUserInvite(declineUserInviteDto: DeclineUserInviteDto) {
@@ -1305,7 +1361,7 @@ export class AuthService {
       }
     }
 
-    return this.completeLogin(user, request);
+    return this.completeLogin(user, request, 'customer');
   }
 
   async loginAdmin(adminLoginDto: AdminLoginDto, request: Request) {
@@ -1348,7 +1404,7 @@ export class AuthService {
 
       if (shouldBypass2FA) {
         await this.ensureAdminProfile(user.id);
-        return this.completeLogin(user, request);
+        return this.completeLogin(user, request, 'admin');
       }
     }
 
@@ -1379,7 +1435,7 @@ export class AuthService {
 
     await this.ensureAdminProfile(user.id);
 
-    return this.completeLogin(user, request);
+    return this.completeLogin(user, request, 'admin');
   }
 
   async loginAdminWithOAuth(oauthProfile: OAuthAdminProfile, request: Request) {
@@ -1522,7 +1578,7 @@ export class AuthService {
       throw new UnauthorizedException('Unable to load admin account');
     }
 
-    return this.completeLogin(hydratedUser, request);
+    return this.completeLogin(hydratedUser, request, 'admin');
   }
 
   async verifyTwoFactorAndLogin(
@@ -1562,21 +1618,33 @@ export class AuthService {
     }
 
     // Complete the login process
-    return this.completeLogin(user, request);
+    return this.completeLogin(user, request, this.resolveAuthActor(user));
   }
 
-  private async completeLogin(user: User, request: Request) {
+  private async completeLogin(
+    user: User,
+    request: Request,
+    actor: 'admin' | 'customer' = this.resolveAuthActor(user),
+  ) {
     const payload: JwtPayload = {
       sub: user.id,
       userId: user.id,
       roleId: user.role?.id ?? user.roleId ?? '',
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const { accessTtlSeconds, refreshTtlSeconds } =
+      await this.getTokenTtlsSeconds(actor);
+
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: accessTtlSeconds,
+    });
     // Revoke all previous refresh token here
     await this.revokeAllUserTokens(user.id);
 
-    const refreshToken = await this.generateRefreshToken(user.id);
+    const refreshToken = await this.generateRefreshToken(
+      user.id,
+      refreshTtlSeconds,
+    );
 
     const { device, browser, os } = parseUserAgent(request);
     const userActivityLog = this.userActivityLogRepository.create({
@@ -1610,6 +1678,8 @@ export class AuthService {
         'user.role',
         'user.role.rolePermissions',
         'user.role.rolePermissions.permission',
+        'user.adminProfile',
+        'user.customerProfile',
       ],
     });
 
@@ -1632,14 +1702,17 @@ export class AuthService {
       roleId: refreshToken.user?.role?.id,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const actor = this.resolveAuthActor(refreshToken.user);
+    const { accessTtlSeconds } = await this.getTokenTtlsSeconds(actor);
+    const accessToken = this.jwtService.sign(payload, {
+      expiresIn: accessTtlSeconds,
+    });
+
+    const accessTokenExpiresAt = new Date(Date.now() + accessTtlSeconds * 1000);
 
     return {
       accessToken,
-      accessTokenExpiresAt: this.configService.get<string>(
-        'JWT_EXPIRATION',
-        '15m',
-      ),
+      accessTokenExpiresAt: accessTokenExpiresAt.toISOString(),
       user: {
         id: refreshToken.user.id,
       },
@@ -1661,20 +1734,19 @@ export class AuthService {
     await this.refreshTokenRepository.delete({ userId });
   }
 
-  private async generateRefreshToken(userId: string): Promise<string> {
+  private async generateRefreshToken(
+    userId: string,
+    refreshTtlSeconds: number,
+  ): Promise<string> {
     const token = this.jwtService.sign(
       { sub: userId },
       {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get<string>(
-          'JWT_REFRESH_EXPIRATION',
-          '7d',
-        ),
+        expiresIn: refreshTtlSeconds,
       },
     );
 
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    const expiresAt = new Date(Date.now() + refreshTtlSeconds * 1000);
 
     const refreshToken = this.refreshTokenRepository.create({
       token,

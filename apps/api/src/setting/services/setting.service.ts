@@ -40,6 +40,10 @@ import {
   UpdateAlgoliaCatalogSecretDto,
   UpsertAlgoliaCatalogSettingDto,
 } from '../dto/algolia-catalog-setting.dto';
+import {
+  AuthTokenSettingsResponseDto,
+  UpsertAuthTokenSettingsDto,
+} from '../dto/auth-token-settings.dto';
 
 @Injectable()
 export class SettingService {
@@ -80,6 +84,106 @@ export class SettingService {
 
     const created = this.settingRepository.create({ key, value });
     await this.settingRepository.save(created);
+  }
+
+  private parsePositiveInt(raw: string | undefined, fallback: number): number {
+    if (raw === undefined || raw === null) return fallback;
+    const parsed = Number.parseInt(String(raw), 10);
+    if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed <= 0) return fallback;
+    return parsed;
+  }
+
+  async getAuthTokenSettings(): Promise<AuthTokenSettingsResponseDto> {
+    const cacheKey = 'settings:auth:tokens';
+    const keys = [
+      'auth_customer_access_ttl_seconds',
+      'auth_customer_refresh_ttl_seconds',
+      'auth_admin_access_ttl_seconds',
+      'auth_admin_refresh_ttl_seconds',
+    ] as const;
+
+    const data = await this.cache.remember(
+      cacheKey,
+      async () => {
+        const settings = await this.settingRepository.find({
+          where: keys.map((key) => ({ key })),
+        });
+
+        const getRaw = (key: (typeof keys)[number]) =>
+          settings.find((s) => s.key === key)?.value;
+
+        const customerAccessFallback = 15 * 60;
+        const customerRefreshFallback = 7 * 24 * 60 * 60;
+        const adminAccessFallback = 15 * 60;
+        const adminRefreshFallback = 7 * 24 * 60 * 60;
+
+        return {
+          customerAccessTokenTtlSeconds: this.parsePositiveInt(
+            getRaw('auth_customer_access_ttl_seconds'),
+            customerAccessFallback,
+          ),
+          customerRefreshTokenTtlSeconds: this.parsePositiveInt(
+            getRaw('auth_customer_refresh_ttl_seconds'),
+            customerRefreshFallback,
+          ),
+          adminAccessTokenTtlSeconds: this.parsePositiveInt(
+            getRaw('auth_admin_access_ttl_seconds'),
+            adminAccessFallback,
+          ),
+          adminRefreshTokenTtlSeconds: this.parsePositiveInt(
+            getRaw('auth_admin_refresh_ttl_seconds'),
+            adminRefreshFallback,
+          ),
+          createdAt: settings[0]?.createdAt,
+          updatedAt: settings[0]?.updatedAt,
+        };
+      },
+      { ttlSeconds: 300 },
+    );
+
+    return plainToClass(AuthTokenSettingsResponseDto, data);
+  }
+
+  async upsertAuthTokenSettings(
+    dto: UpsertAuthTokenSettingsDto,
+  ): Promise<AuthTokenSettingsResponseDto> {
+    const entries: Array<{ key: string; value: string }>
+      = [];
+
+    if (dto.customerAccessTokenTtlSeconds !== undefined) {
+      entries.push({
+        key: 'auth_customer_access_ttl_seconds',
+        value: String(dto.customerAccessTokenTtlSeconds),
+      });
+    }
+
+    if (dto.customerRefreshTokenTtlSeconds !== undefined) {
+      entries.push({
+        key: 'auth_customer_refresh_ttl_seconds',
+        value: String(dto.customerRefreshTokenTtlSeconds),
+      });
+    }
+
+    if (dto.adminAccessTokenTtlSeconds !== undefined) {
+      entries.push({
+        key: 'auth_admin_access_ttl_seconds',
+        value: String(dto.adminAccessTokenTtlSeconds),
+      });
+    }
+
+    if (dto.adminRefreshTokenTtlSeconds !== undefined) {
+      entries.push({
+        key: 'auth_admin_refresh_ttl_seconds',
+        value: String(dto.adminRefreshTokenTtlSeconds),
+      });
+    }
+
+    for (const entry of entries) {
+      await this.upsertSetting(entry.key, entry.value);
+    }
+
+    await this.cache.del('settings:auth:tokens');
+    return this.getAuthTokenSettings();
   }
 
   private parseJsonSafe(raw: string): Record<string, unknown> {

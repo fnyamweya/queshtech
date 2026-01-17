@@ -38,6 +38,8 @@ class InMemorySettingRepo {
 describe('SettingService.updateS3Secrets', () => {
   it('stores S3 secrets encrypted and never returns their values', async () => {
     const repo = new InMemorySettingRepo();
+    const oauthRepo = {} as any;
+    const roleRepo = {} as any;
     const cache = {
       del: jest.fn(),
       remember: jest.fn(async (_k: any, fn: any) => fn()),
@@ -47,7 +49,7 @@ describe('SettingService.updateS3Secrets', () => {
       decrypt: jest.fn((v: string) => v),
     } as any;
 
-    const svc = new SettingService(repo as any, cache, crypto);
+    const svc = new SettingService(repo as any, oauthRepo, roleRepo, cache, crypto);
 
     const res = await svc.updateS3Secrets({
       accessKeyId: 'access_key',
@@ -80,6 +82,8 @@ describe('SettingService.updateS3Secrets', () => {
 
   it('is idempotent and can update one secret at a time', async () => {
     const repo = new InMemorySettingRepo();
+    const oauthRepo = {} as any;
+    const roleRepo = {} as any;
     const cache = {
       del: jest.fn(),
       remember: jest.fn(async (_k: any, fn: any) => fn()),
@@ -89,7 +93,7 @@ describe('SettingService.updateS3Secrets', () => {
       decrypt: jest.fn((v: string) => v),
     } as any;
 
-    const svc = new SettingService(repo as any, cache, crypto);
+    const svc = new SettingService(repo as any, oauthRepo, roleRepo, cache, crypto);
 
     await svc.updateS3Secrets({ accessKeyId: 'a' });
     await svc.updateS3Secrets({ secretAccessKey: 'b' });

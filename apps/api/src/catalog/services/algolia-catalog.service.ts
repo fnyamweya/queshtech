@@ -123,6 +123,83 @@ export class AlgoliaCatalogService {
     }
   }
 
+  private async getSearchClient(cfg: AlgoliaCatalogConfig): Promise<SearchClient | null> {
+    if (!cfg.enabled) return null;
+    if (!cfg.appId) return null;
+
+    const key = cfg.searchApiKey || cfg.adminApiKey;
+    if (!key) return null;
+
+    try {
+      return algoliasearch(cfg.appId, key);
+    } catch (e: any) {
+      this.logger.warn(`Failed to init Algolia search client: ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  async searchPublicProducts(input: {
+    q?: string;
+    page?: number;
+    limit?: number;
+    filters?: string;
+  }): Promise<
+    | {
+        indexName: string;
+        hits: any[];
+        nbHits: number;
+        page: number;
+        nbPages: number;
+        hitsPerPage: number;
+        processingTimeMS?: number;
+        query?: string;
+      }
+    | null
+  > {
+    const cfg = await this.getConfig();
+    const client = await this.getSearchClient(cfg);
+    if (!client) return null;
+
+    const indexName = this.buildIndexName(cfg.indexPrefix, cfg.productsIndexName);
+    const index = client.initIndex(indexName);
+
+    const page1 = Math.max(1, input.page ?? 1);
+    const hitsPerPage = Math.max(1, Math.min(100, input.limit ?? 20));
+    const page0 = page1 - 1;
+
+    // Always enforce public visibility constraint.
+    const publicFilter = 'status:active';
+    const combinedFilters = input.filters
+      ? `(${input.filters}) AND ${publicFilter}`
+      : publicFilter;
+
+    const baseParams =
+      cfg.searchParamsJson && typeof cfg.searchParamsJson === 'object' && !Array.isArray(cfg.searchParamsJson)
+        ? (cfg.searchParamsJson as Record<string, unknown>)
+        : {};
+
+    const params = {
+      ...(baseParams as any),
+      page: page0,
+      hitsPerPage,
+      filters: combinedFilters,
+    } as any;
+
+    const q = (input.q ?? '').trim();
+    const res = await index.search(q, params);
+
+    return {
+      indexName,
+      hits: (res as any).hits ?? [],
+      nbHits: (res as any).nbHits ?? 0,
+      page: ((res as any).page ?? 0) + 1,
+      nbPages: (res as any).nbPages ?? 0,
+      hitsPerPage: (res as any).hitsPerPage ?? hitsPerPage,
+      processingTimeMS: (res as any).processingTimeMS,
+      query: (res as any).query ?? q,
+    };
+  }
+
   async getPublicSearchConfig(): Promise<{
     enabled: boolean;
     appId?: string;

@@ -1,4 +1,4 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { User, SignupData, LoginData } from '@/types/auth'
 import { apiRequest, ApiError, extractAccessToken, extractRefreshToken } from '@/lib/api'
 import { createApiClient } from '@/lib/api-client'
@@ -6,6 +6,7 @@ import { useStorage } from '@/hooks/use-storage'
 import type { UserProfilePreferences } from '@/types/profilePreferences'
 import { endpoints } from '@/lib/endpoints'
 import { apiUrl } from '@/lib/api'
+import { getJwtExpiryMs } from '@/lib/jwt'
 
 type RefreshResult = { success: boolean; accessToken?: string; refreshToken?: string; error?: string }
 
@@ -56,38 +57,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useStorage<User | null>('auth-user', null)
   const [accessToken, setAccessToken] = useStorage<string | null>('auth-access-token', null)
   const [refreshToken, setRefreshToken] = useStorage<string | null>('auth-refresh-token', null)
+  const [accessTokenExpiresAt, setAccessTokenExpiresAt] = useStorage<string | null>('auth-access-token-expires-at', null)
   const [isLoading, setIsLoading] = useState(false)
   const [isReady, setIsReady] = useState(false)
+
+  const refreshInFlightRef = useRef<Promise<RefreshResult> | null>(null)
 
   const clearAuth = useCallback(() => {
     setUser(null)
     setAccessToken(null)
     setRefreshToken(null)
+    setAccessTokenExpiresAt(null)
     setIsReady(true)
-  }, [setAccessToken, setRefreshToken, setUser])
+  }, [setAccessToken, setAccessTokenExpiresAt, setRefreshToken, setUser])
 
   const refreshSession = useCallback(async (): Promise<RefreshResult> => {
-    // Policy: do not attempt client-side refresh.
-    // Treat refresh as unrecoverable and require re-login.
-    clearAuth()
-    return { success: false, error: refreshToken ? 'Session refresh disabled. Please sign in again.' : 'Missing refresh token' }
-  }, [clearAuth, refreshToken])
+    if (!refreshToken) {
+      clearAuth()
+      return { success: false, error: 'Missing refresh token' }
+    }
+
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current
+    }
+
+    refreshInFlightRef.current = (async () => {
+      try {
+        const payload = await apiRequest<any>(endpoints.auth.refresh, {
+          method: 'POST',
+          body: { refreshToken },
+        })
+
+        const body = (payload as any)?.data ?? payload
+        const nextAccessToken = extractAccessToken(body)
+        const nextRefreshToken = extractRefreshToken(body)
+
+        if (!nextAccessToken) {
+          clearAuth()
+          return { success: false, error: 'Refresh did not return an access token' }
+        }
+
+        setAccessToken(nextAccessToken)
+        // Most backends only rotate access tokens; keep existing refresh token unless one is returned.
+        if (nextRefreshToken) setRefreshToken(nextRefreshToken)
+
+        const expFromResponse = (body as any)?.accessTokenExpiresAt
+        const expMs = typeof expFromResponse === 'string' ? Date.parse(expFromResponse) : getJwtExpiryMs(nextAccessToken)
+        if (expMs && Number.isFinite(expMs)) setAccessTokenExpiresAt(new Date(expMs).toISOString())
+
+        return { success: true, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined }
+      } catch (error) {
+        // Refresh failed (expired/invalid token). Treat as signed-out.
+        clearAuth()
+        const message = error instanceof ApiError ? error.message : 'Session refresh failed'
+        return { success: false, error: message }
+      } finally {
+        refreshInFlightRef.current = null
+      }
+    })()
+
+    return refreshInFlightRef.current
+  }, [clearAuth, refreshToken, setAccessToken, setAccessTokenExpiresAt, setRefreshToken])
 
   const authorizedRequest = useCallback(
     async <T,>(path: string, options?: Omit<Parameters<typeof apiRequest<T>>[1], 'token'>) => {
+      const attempt = async (tokenOverride?: string | null) => {
+        return apiRequest<T>(path, (tokenOverride ?? accessToken)
+          ? { ...(options || {}), token: tokenOverride ?? accessToken }
+          : { ...(options || {}) })
+      }
+
       try {
-        return await apiRequest<T>(path, accessToken ? { ...(options || {}), token: accessToken } : { ...(options || {}) })
+        return await attempt(null)
       } catch (error) {
-        // Policy: treat auth failures as a hard stop.
-        // Do not attempt refresh or retries to avoid loops.
-        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-          clearAuth()
+        if (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403)) {
+          throw error
         }
-        throw error
+
+        // One retry after a successful refresh. Avoid infinite loops.
+        const refreshed = await refreshSession()
+        if (!refreshed.success || !refreshed.accessToken) {
+          // refreshSession already cleared auth on failure
+          throw error
+        }
+
+        return await attempt(refreshed.accessToken)
       }
     },
-    [accessToken, clearAuth]
+    [accessToken, refreshSession]
   )
+
+  useEffect(() => {
+    if (!accessToken || !refreshToken) return
+
+    const expMs = getJwtExpiryMs(accessToken)
+    if (!expMs) return
+
+    // Refresh a bit before expiry to hide latency.
+    const skewMs = 30_000
+    const delayMs = expMs - Date.now() - skewMs
+
+    if (delayMs <= 0) {
+      // Token is (nearly) expired; refresh now.
+      void refreshSession()
+      return
+    }
+
+    const t = window.setTimeout(() => {
+      void refreshSession()
+    }, delayMs)
+
+    return () => window.clearTimeout(t)
+  }, [accessToken, refreshToken, refreshSession])
 
   const getProfile = useCallback(async () => {
     const payload = await authorizedRequest<any>(endpoints.auth.profile, { method: 'GET' })
@@ -158,9 +239,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (nextAccessToken) setAccessToken(nextAccessToken)
       else setAccessToken(null)
       if (nextRefreshToken) setRefreshToken(nextRefreshToken)
+
+      if (nextAccessToken) {
+        const expMs = getJwtExpiryMs(nextAccessToken)
+        if (expMs) setAccessTokenExpiresAt(new Date(expMs).toISOString())
+      } else {
+        setAccessTokenExpiresAt(null)
+      }
       return { accessToken: nextAccessToken, refreshToken: nextRefreshToken }
     },
-    [setAccessToken, setRefreshToken]
+    [setAccessToken, setAccessTokenExpiresAt, setRefreshToken]
   )
 
   const getProfileWithToken = useCallback(
