@@ -19,6 +19,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
   const container = 'container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px]'
   const [searchParams, setSearchParams] = useSearchParams()
   const qParam = (searchParams.get('q') || '').trim()
+  const highlightTerms = useMemo(() => (qParam ? qParam.split(/\s+/g).filter(Boolean) : []), [qParam])
 
   const [inputValue, setInputValue] = useState(qParam)
   const [sortBy, setSortBy] = useState<SortOption>('relevance')
@@ -285,7 +286,16 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {sortedProducts.map((product) => (
-                <ProductCard key={product.id} product={product} onAddToCart={onAddToCart} />
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAddToCart={onAddToCart}
+                  behavior={{
+                    discovery: { highlightTerms },
+                    price: { showSavings: 'percent' },
+                    badges: { max: 2 },
+                  }}
+                />
               ))}
             </div>
 
