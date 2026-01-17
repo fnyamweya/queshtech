@@ -19,7 +19,9 @@ import {
   Trash,
 } from '@phosphor-icons/react'
 import { mockProducts, mockCategories } from '@/data/mock-data'
-import { getAlgoliaCatalogPublicConfig, searchAlgoliaCatalogProducts } from '@/lib/algolia-catalog'
+import { getAlgoliaCatalogPublicConfig } from '@/lib/algolia-catalog'
+import { createApiClient } from '@/lib/api-client'
+import { endpoints } from '@/lib/endpoints'
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '@/lib/recent-searches'
 
 interface SearchCommandProps {
@@ -74,6 +76,7 @@ function fuzzyMatch(str: string, pattern: string): number {
 
 export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
   const [, setLocation] = useLocation()
+  const api = useMemo(() => createApiClient(), [])
   const [query, setQuery] = useState('')
   const [algoliaEnabled, setAlgoliaEnabled] = useState(false)
   const [minQueryLength, setMinQueryLength] = useState(2)
@@ -124,9 +127,12 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
       void (async () => {
         setIsAlgoliaLoading(true)
         try {
-          const resp = await searchAlgoliaCatalogProducts(q, { hitsPerPage: 8 })
+          const resp = await api.get(
+            endpoints.catalog.publicSearchProducts({ q, limit: 8, page: 1 })
+          )
           if (cancelled) return
-          const items = (resp.hits ?? []).map((h) => ({
+          const hits = ((resp as any)?.data?.hits ?? (resp as any)?.hits ?? []) as any[]
+          const items = hits.map((h: any) => ({
             id: h.productId || h.objectID,
             slug: h.slug,
             title: h.title,
@@ -147,7 +153,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
       cancelled = true
       window.clearTimeout(t)
     }
-  }, [algoliaEnabled, debounceMs, minQueryLength, query])
+  }, [algoliaEnabled, api, debounceMs, minQueryLength, query])
 
   const searchResults = useMemo(() => {
     // If Algolia is enabled, treat categories as quick links for now.

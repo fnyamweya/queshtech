@@ -10,7 +10,9 @@ function extractList(payload: unknown): any[] {
   if (Array.isArray(p?.items)) return p.items
   if (Array.isArray(p?.data)) return p.data
   if (Array.isArray(p?.data?.items)) return p.data.items
+  if (Array.isArray(p?.data?.hits)) return p.data.hits
   if (Array.isArray(p?.results)) return p.results
+  if (Array.isArray(p?.hits)) return p.hits
   return []
 }
 
@@ -19,6 +21,15 @@ function extractPagination(payload: unknown): { total?: number; page?: number; l
   const total = typeof p?.total === 'number' ? p.total : typeof p?.data?.total === 'number' ? p.data.total : undefined
   const page = typeof p?.page === 'number' ? p.page : typeof p?.data?.page === 'number' ? p.data.page : undefined
   const limit = typeof p?.limit === 'number' ? p.limit : typeof p?.data?.limit === 'number' ? p.data.limit : undefined
+  return { total, page, limit }
+}
+
+function extractAlgoliaPagination(payload: unknown): { total?: number; page?: number; limit?: number } {
+  const p: any = payload as any
+  const source = p?.data && typeof p.data === 'object' ? p.data : p
+  const total = typeof source?.nbHits === 'number' ? source.nbHits : undefined
+  const page = typeof source?.page === 'number' ? source.page : undefined
+  const limit = typeof source?.hitsPerPage === 'number' ? source.hitsPerPage : undefined
   return { total, page, limit }
 }
 
@@ -188,6 +199,70 @@ export function usePublicCategoryProducts(options: {
     setQ,
     setSort,
     total,
+    isLoading,
+    error,
+    refresh,
+  }
+}
+
+export function usePublicSearchProducts(options?: {
+  page?: number
+  limit?: number
+  q?: string
+  filters?: string
+}) {
+  const api = useMemo(() => createApiClient(), [])
+
+  const [items, setItems] = useState<Product[]>([])
+  const [total, setTotal] = useState<number | null>(null)
+  const [page, setPage] = useState<number>(options?.page ?? 1)
+  const [limit, setLimit] = useState<number>(options?.limit ?? 20)
+  const [q, setQ] = useState<string>(options?.q ?? '')
+  const [filters, setFilters] = useState<string | undefined>(options?.filters)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const url = endpoints.catalog.publicSearchProducts({
+        page,
+        limit,
+        q: q.trim() || undefined,
+        filters,
+      })
+      const payload = await api.get(url)
+      const list = extractList(payload).map(mapToProduct).filter(Boolean) as Product[]
+      const { total: t, page: p, limit: l } = extractAlgoliaPagination(payload)
+      setItems(list)
+      setTotal(typeof t === 'number' ? t : null)
+      if (typeof p === 'number') setPage(p)
+      if (typeof l === 'number') setLimit(l)
+    } catch (e: any) {
+      setItems([])
+      setTotal(null)
+      setError(e?.message || 'Failed to search products')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [api, filters, limit, page, q])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+    q,
+    filters,
+    setPage,
+    setLimit,
+    setQ,
+    setFilters,
     isLoading,
     error,
     refresh,

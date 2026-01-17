@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/commerce/product-card'
-import { usePublicProducts } from '@/hooks/use-public-products'
+import { usePublicSearchProducts } from '@/hooks/use-public-products'
 import { usePublicCategories } from '@/hooks/use-catalog-categories'
 import type { Product, SortOption } from '@/types'
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '@/lib/recent-searches'
@@ -26,8 +26,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>('all')
   const [recentSearches, setRecentSearches] = useState<string[]>([])
 
-  const { items, total, q, setQ, limit, setLimit, isLoading, error, setPage, refresh } = usePublicProducts({
-    view: true,
+  const { items, total, q, setQ, limit, setLimit, isLoading, error, setPage, refresh } = usePublicSearchProducts({
     limit: 24,
     q: qParam,
   })
