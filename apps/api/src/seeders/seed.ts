@@ -8,7 +8,7 @@ import { CollectionSeeder } from '../catalog/seeders/collection.seeder';
 import { ShippingSeeder } from '../shipping/seeders/shipping.seeder';
 import { LocationSeeder } from '../location/seeders/location.seeder';
 import { ChannelsSeeder } from '../channels/seeders/channels.seeder';
-import { CustomerTierSeeder } from '../customer-tier/seeders/customer-tier.seeder';
+import { CustomerGroupSeeder } from '../customer-group/seeders/customer-group.seeder';
 import { WhatsappTemplateSeeder } from '../whatsapp/seeders/whatsapp-template.seeder';
 import { CurrencySeeder } from '../currency/seeders/currency.seeder';
 import { PaymentProviderSeeder } from '../payment-provider/seeders/payment-provider.seeder';
@@ -28,7 +28,7 @@ async function runSeeders() {
     const shippingSeeder = app.get(ShippingSeeder);
     const locationSeeder = app.get(LocationSeeder);
     const channelsSeeder = app.get(ChannelsSeeder);
-    const customerTierSeeder = app.get(CustomerTierSeeder);
+    const customerGroupSeeder = app.get(CustomerGroupSeeder);
     const whatsappTemplateSeeder = app.get(WhatsappTemplateSeeder);
     const currencySeeder = app.get(CurrencySeeder);
     const paymentProviderSeeder = app.get(PaymentProviderSeeder);
@@ -69,10 +69,10 @@ async function runSeeders() {
 
     console.log('✅ WhatsApp templates seeding completed');
 
-    console.log('🏷️ Seeding customer tiers (BASE)...');
-    await customerTierSeeder.seed();
+    console.log('🏷️ Seeding customer groups (RETAIL)...');
+    await customerGroupSeeder.seed();
 
-    console.log('✅ Customer tiers seeding completed');
+    console.log('✅ Customer groups seeding completed');
 
     console.log(
       '📝 Seeding authentication data (roles, permissions, users)...',

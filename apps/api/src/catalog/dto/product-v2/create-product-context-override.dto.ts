@@ -37,7 +37,7 @@ class ContextMatchDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  customerTier?: string;
+  customerGroup?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

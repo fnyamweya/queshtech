@@ -50,7 +50,7 @@ import { CatalogSeeder } from './seeders/catalog.seeder';
 import { CollectionSeeder } from './seeders/collection.seeder';
 import { PriceService } from './services/price.service';
 import { AlgoliaCatalogService } from './services/algolia-catalog.service';
-import { CustomerTierModule } from '../customer-tier/customer-tier.module';
+import { CustomerGroupMembershipModule } from '../customer-group/membership/customer-group-membership.module';
 import { CurrencyModule } from '../currency/currency.module';
 import { CustomerProductReviewsController } from './controllers/customer/customer-product-reviews.controller';
 import { SettingModule } from '../setting/setting.module';
@@ -82,7 +82,7 @@ import { SettingModule } from '../setting/setting.module';
       Brand,
       Channel,
     ]),
-    CustomerTierModule,
+    CustomerGroupMembershipModule,
     CurrencyModule,
     SettingModule,
   ],

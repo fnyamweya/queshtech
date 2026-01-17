@@ -10,11 +10,11 @@ export class ProductViewContextDto {
   channel?: string;
 
   @ApiPropertyOptional({
-    description: 'Customer tier/segment (e.g. VIP, REGULAR)',
+    description: 'Customer group/segment (e.g. VIP, WHOLESALE)',
   })
   @IsOptional()
   @IsString()
-  customerTier?: string;
+  customerGroup?: string;
 
   @ApiPropertyOptional({ description: 'Location identifier (e.g. KE-NBI)' })
   @IsOptional()

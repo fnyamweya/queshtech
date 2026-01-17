@@ -17,7 +17,7 @@ import { ProductService } from '../../services/product.service';
 import { PublicListCategoriesDto } from '../../dto/public/public-list-categories.dto';
 import { PublicListProductsDto } from '../../dto/public/public-list-products.dto';
 import { PublicListProductsViewDto } from '../../dto/public/public-list-products-view.dto';
-import { CustomerTierService } from 'src/customer-tier/customer-tier.service';
+import { CustomerGroupMembershipService } from 'src/customer-group/membership/customer-group-membership.service';
 
 @Controller('public/catalog/categories')
 @ApiTags('Public Catalog: Categories')
@@ -32,7 +32,7 @@ export class PublicCategoriesController {
   constructor(
     private readonly categoryService: CategoryService,
     private readonly productService: ProductService,
-    private readonly customerTierService: CustomerTierService,
+    private readonly customerGroupMembershipService: CustomerGroupMembershipService,
   ) {}
 
   @Get()
@@ -83,15 +83,15 @@ export class PublicCategoriesController {
     @Query() query: PublicListProductsViewDto,
   ) {
     const user = (req as any).user as { id: string } | undefined;
-    const resolvedTier = user?.id
-      ? await this.customerTierService.resolveTierForUser(user.id)
-      : { tierCode: 'BASE', source: 'default' };
+    const resolvedGroup = user?.id
+      ? await this.customerGroupMembershipService.resolvePrimaryGroupForUser(user.id)
+      : { groupCode: query.customerGroup, source: 'default' };
 
     const result = await this.productService.findAllPublicView({
       ...query,
       categoryId: id,
       channel: query.channel?.toUpperCase(),
-      customerTier: resolvedTier.tierCode,
+      customerGroup: resolvedGroup.groupCode,
     });
 
     return ResponseUtil.paginated(

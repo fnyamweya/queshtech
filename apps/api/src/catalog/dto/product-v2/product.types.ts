@@ -64,7 +64,7 @@ export interface JsonPatchOperation {
 
 export interface ContextMatch {
   channel?: string;
-  customerTier?: string;
+  customerGroup?: string;
   location?: string;
   role?: string;
 }

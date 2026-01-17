@@ -16,7 +16,7 @@ import { ProductService } from '../../services/product.service';
 import { PublicListProductsDto } from '../../dto/public/public-list-products.dto';
 import { PublicListProductsViewDto } from '../../dto/public/public-list-products-view.dto';
 import { PublicProductViewQueryDto } from '../../dto/public/public-product-view-query.dto';
-import { CustomerTierService } from 'src/customer-tier/customer-tier.service';
+import { CustomerGroupMembershipService } from 'src/customer-group/membership/customer-group-membership.service';
 import { CustomerProductViewService } from '../../services/customer-product-view.service';
 
 @Controller('public/catalog/products')
@@ -31,7 +31,7 @@ import { CustomerProductViewService } from '../../services/customer-product-view
 export class PublicProductsController {
   constructor(
     private readonly productService: ProductService,
-    private readonly customerTierService: CustomerTierService,
+    private readonly customerGroupMembershipService: CustomerGroupMembershipService,
     private readonly customerProductViewService: CustomerProductViewService,
   ) {}
 
@@ -56,14 +56,14 @@ export class PublicProductsController {
     @Query() query: PublicListProductsViewDto,
   ) {
     const user = (req as any).user as { id: string } | undefined;
-    const resolvedTier = user?.id
-      ? await this.customerTierService.resolveTierForUser(user.id)
-      : { tierCode: 'BASE', source: 'default' };
+    const resolvedGroup = user?.id
+      ? await this.customerGroupMembershipService.resolvePrimaryGroupForUser(user.id)
+      : { groupCode: query.customerGroup, source: 'default' };
 
     const result = await this.productService.findAllPublicView({
       ...query,
       channel: query.channel?.toUpperCase(),
-      customerTier: resolvedTier.tierCode,
+      customerGroup: resolvedGroup.groupCode,
     });
     return ResponseUtil.paginated(
       result.data,
@@ -106,13 +106,13 @@ export class PublicProductsController {
     if (user?.id) {
       await this.customerProductViewService.recordView(user.id, id);
     }
-    const resolvedTier = user?.id
-      ? await this.customerTierService.resolveTierForUser(user.id)
-      : { tierCode: 'BASE', source: 'default' };
+    const resolvedGroup = user?.id
+      ? await this.customerGroupMembershipService.resolvePrimaryGroupForUser(user.id)
+      : { groupCode: query.customerGroup, source: 'default' };
 
     const context = {
       channel: query.channel?.toUpperCase(),
-      customerTier: resolvedTier.tierCode,
+      customerGroup: resolvedGroup.groupCode,
       location: query.location,
       role: query.role,
     };

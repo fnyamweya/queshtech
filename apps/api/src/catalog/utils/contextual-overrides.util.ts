@@ -11,7 +11,7 @@ import { ProductDTO } from '../dto/product-v2/product.dto';
 
 export interface ProductViewContext {
   channel?: string;
-  customerTier?: string;
+  customerGroup?: string;
   location?: string;
   role?: string;
   now?: Date;
@@ -23,7 +23,7 @@ function matchesContext(
 ): boolean {
   if (!match) return true;
   if (match.channel && match.channel !== ctx.channel) return false;
-  if (match.customerTier && match.customerTier !== ctx.customerTier)
+  if (match.customerGroup && match.customerGroup !== ctx.customerGroup)
     return false;
   if (match.location && match.location !== ctx.location) return false;
   if (match.role && match.role !== ctx.role) return false;

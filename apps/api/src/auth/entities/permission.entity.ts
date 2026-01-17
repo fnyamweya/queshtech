@@ -36,7 +36,7 @@ export enum PermissionModule {
   PROMOTIONS = 'Promotions',
   CHANNELS = 'Channels',
   PRICING = 'Pricing',
-  CUSTOMER_TIERS = 'Customer Tiers',
+  CUSTOMER_GROUPS = 'Customer Groups',
   SHIPPING = 'Shipping',
   TAX = 'Tax',
 

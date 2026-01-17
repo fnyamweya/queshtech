@@ -701,7 +701,7 @@ export class ProductService {
         locale: filters.locale,
         priceListId: filters.priceListId,
         currencyCode: filters.currencyCode,
-        customerTier: filters.customerTier,
+        customerGroup: filters.customerGroup,
         role: filters.role,
         context,
       },
@@ -1861,13 +1861,13 @@ export class ProductService {
 
   private buildViewContext(input: {
     channel?: string;
-    customerTier?: string;
+    customerGroup?: string;
     location?: string;
     role?: string;
   }): ProductViewContext {
     const context: ProductViewContext = {};
     if (input.channel) context.channel = input.channel.toUpperCase();
-    if (input.customerTier) context.customerTier = input.customerTier;
+    if (input.customerGroup) context.customerGroup = input.customerGroup;
     if (input.location) context.location = input.location;
     if (input.role) context.role = input.role;
     return context;

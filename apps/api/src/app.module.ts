@@ -25,7 +25,7 @@ import { CustomerShippingAddressModule } from './customer-shipping-address/custo
 import { LocationModule } from './location/location.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ChannelsModule } from './channels/channels.module';
-import { CustomerTierModule } from './customer-tier/customer-tier.module';
+import { CustomerGroupModule } from './customer-group/customer-group.module';
 import { BannerModule } from './banner/banner.module';
 import { PricingModule } from './pricing/pricing.module';
 import { CurrencyModule } from './currency/currency.module';
@@ -68,7 +68,7 @@ const envFilePath = existsSync(`${process.cwd()}/.env.local`) ? '.env.local' : '
     CustomerShippingAddressModule,
     LocationModule,
     ChannelsModule,
-    CustomerTierModule,
+    CustomerGroupModule,
     BannerModule,
     PricingModule,
     CurrencyModule,
