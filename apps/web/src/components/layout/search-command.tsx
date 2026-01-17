@@ -9,13 +9,39 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command'
-import { MagnifyingGlass, Package, Tag, Sparkle } from '@phosphor-icons/react'
+import {
+  ArrowRight,
+  ClockCounterClockwise,
+  MagnifyingGlass,
+  Package,
+  Sparkle,
+  Tag,
+  Trash,
+} from '@phosphor-icons/react'
 import { mockProducts, mockCategories } from '@/data/mock-data'
 import { getAlgoliaCatalogPublicConfig, searchAlgoliaCatalogProducts } from '@/lib/algolia-catalog'
+import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '@/lib/recent-searches'
 
 interface SearchCommandProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+function highlightText(text: string, query: string) {
+  const q = query.trim()
+  if (!q) return text
+  const idx = text.toLowerCase().indexOf(q.toLowerCase())
+  if (idx < 0) return text
+  const before = text.slice(0, idx)
+  const match = text.slice(idx, idx + q.length)
+  const after = text.slice(idx + q.length)
+  return (
+    <>
+      {before}
+      <mark className="rounded bg-primary/10 px-1 text-foreground">{match}</mark>
+      {after}
+    </>
+  )
 }
 
 function fuzzyMatch(str: string, pattern: string): number {
@@ -52,6 +78,8 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
   const [algoliaEnabled, setAlgoliaEnabled] = useState(false)
   const [minQueryLength, setMinQueryLength] = useState(2)
   const [debounceMs, setDebounceMs] = useState(150)
+  const [isAlgoliaLoading, setIsAlgoliaLoading] = useState(false)
+  const [recentSearches, setRecentSearches] = useState<string[]>([])
   const [algoliaProducts, setAlgoliaProducts] = useState<
     Array<{ id: string; slug: string; title: string; brandName?: string; imageUrl?: string }>
   >([])
@@ -77,17 +105,24 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
   }, [])
 
   useEffect(() => {
+    if (!open) return
+    setRecentSearches(loadRecentSearches())
+  }, [open])
+
+  useEffect(() => {
     if (!algoliaEnabled) return
 
     const q = query.trim()
     if (!q || q.length < minQueryLength) {
       setAlgoliaProducts([])
+      setIsAlgoliaLoading(false)
       return
     }
 
     let cancelled = false
     const t = window.setTimeout(() => {
       void (async () => {
+        setIsAlgoliaLoading(true)
         try {
           const resp = await searchAlgoliaCatalogProducts(q, { hitsPerPage: 8 })
           if (cancelled) return
@@ -102,6 +137,8 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
         } catch {
           if (cancelled) return
           setAlgoliaProducts([])
+        } finally {
+          if (!cancelled) setIsAlgoliaLoading(false)
         }
       })()
     }, debounceMs)
@@ -162,6 +199,15 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      const isEditable =
+        Boolean(target?.isContentEditable) ||
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT'
+      if (isEditable) return
+
       if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !open)) {
         e.preventDefault()
         onOpenChange(true)
@@ -178,6 +224,13 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
     callback()
   }
 
+  const navigateToSearchResults = (q: string) => {
+    const trimmed = q.trim()
+    if (!trimmed) return
+    setRecentSearches(addRecentSearch(trimmed, { max: 8 }))
+    setLocation(`/search?q=${encodeURIComponent(trimmed)}`)
+  }
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-KE', {
       style: 'currency',
@@ -188,24 +241,104 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
   }
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
+    <CommandDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Search QueshTech"
+      description="Search products, categories, and brands"
+      contentClassName="sm:max-w-2xl"
+      commandClassName="rounded-2xl"
+    >
       <CommandInput
         placeholder="Search products, categories, brands..."
         value={query}
         onValueChange={setQuery}
+        className="text-[15px]"
       />
-      <CommandList>
+      <CommandList className="max-h-[420px] sm:max-h-[520px]">
         <CommandEmpty>
-          <div className="flex flex-col items-center gap-2 py-6">
-            <MagnifyingGlass className="text-muted-foreground" size={48} weight="thin" />
-            <p className="text-sm text-muted-foreground">
-              No results found for "{query}"
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Try different keywords or browse categories
-            </p>
-          </div>
+          {isAlgoliaLoading ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
+              <p className="text-sm text-muted-foreground">Searching…</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-8">
+              <MagnifyingGlass className="text-muted-foreground" size={44} weight="thin" />
+              {query.trim().length < minQueryLength ? (
+                <>
+                  <p className="text-sm text-muted-foreground">Start typing to search</p>
+                  <p className="text-xs text-muted-foreground">Try a product name, brand, or category</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">No results for “{query.trim()}”</p>
+                  <p className="text-xs text-muted-foreground">Try different keywords or browse categories</p>
+                </>
+              )}
+            </div>
+          )}
         </CommandEmpty>
+
+        {query.trim().length > 0 ? (
+          <>
+            <CommandGroup heading="Search">
+              <CommandItem
+                value={`search-all-${query.trim()}`}
+                onSelect={() => handleSelect(() => navigateToSearchResults(query))}
+                className="flex items-center gap-3 px-3 py-2.5"
+              >
+                <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <MagnifyingGlass size={18} weight="bold" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate">Search for “{query.trim()}”</p>
+                  <p className="text-xs text-muted-foreground">{isAlgoliaLoading ? 'Searching…' : 'View all results'}</p>
+                </div>
+                {isAlgoliaLoading ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
+                ) : (
+                  <ArrowRight className="text-muted-foreground" size={18} />
+                )}
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        ) : null}
+
+        {!query.trim() && recentSearches.length > 0 ? (
+          <>
+            <CommandGroup heading="Recent">
+              {recentSearches.slice(0, 8).map((term) => (
+                <CommandItem
+                  key={term}
+                  value={`recent-${term}`}
+                  onSelect={() => handleSelect(() => navigateToSearchResults(term))}
+                  className="flex items-center gap-3 px-3 py-2.5"
+                >
+                  <ClockCounterClockwise className="text-muted-foreground" size={18} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{term}</p>
+                  </div>
+                </CommandItem>
+              ))}
+              <CommandItem
+                value="recent-clear"
+                onSelect={() =>
+                  handleSelect(() => {
+                    clearRecentSearches()
+                    setRecentSearches([])
+                  })
+                }
+                className="flex items-center gap-3 px-3 py-2.5 text-destructive"
+              >
+                <Trash size={18} weight="bold" />
+                <span>Clear recent searches</span>
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        ) : null}
 
         {searchResults.categories.length > 0 && (
           <>
@@ -219,7 +352,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                 >
                   <Tag className="text-primary" size={18} />
                   <div className="flex flex-col">
-                    <span className="font-medium">{category.name}</span>
+                    <span className="font-medium">{highlightText(category.name, query)}</span>
                     <span className="text-xs text-muted-foreground">
                       {category.productCount} products
                     </span>
@@ -250,7 +383,9 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{algoliaEnabled ? product.title : product.name}</p>
+                      <p className="font-medium text-sm truncate">
+                        {highlightText(algoliaEnabled ? product.title : product.name, query)}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {algoliaEnabled ? product.brandName || '—' : product.brand}
                       </p>

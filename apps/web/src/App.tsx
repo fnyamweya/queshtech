@@ -14,6 +14,7 @@ import { MiniCart } from '@/components/commerce/mini-cart'
 import { HomePage } from '@/pages/home'
 import { CategoryPage } from '@/pages/category'
 import { ProductDetailPage } from '@/pages/product-detail'
+import { SearchPage } from '@/pages/search'
 import { CartPage } from '@/pages/cart'
 import { CheckoutPage } from '@/pages/checkout'
 import { ProfilePage } from '@/pages/profile'
@@ -244,6 +245,9 @@ function App() {
               <Switch>
                 <Route path="/">
                   <HomePage onAddToCart={addToCart} />
+                </Route>
+                <Route path="/search">
+                  <SearchPage onAddToCart={addToCart} />
                 </Route>
                 <Route path="/category/:slug">
                   <CategoryPage onAddToCart={addToCart} />

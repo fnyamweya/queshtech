@@ -43,5 +43,8 @@ export default defineConfig(({ mode }) => {
       '@': resolve(projectRoot, 'src')
     }
   },
+  build: {
+    reportCompressedSize: false,
+  },
   }
 });
