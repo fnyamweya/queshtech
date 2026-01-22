@@ -18,8 +18,13 @@ describe('ShippingAdminService', () => {
   let zoneRepo: any;
   let zoneLocationRepo: any;
   let methodRepo: any;
+  let zoneMethodRepo: any;
+  let providerRepo: any;
   let rateRepo: any;
+  let channelRepo: any;
+  let locationRepo: any;
   let cache: any;
+  let currencyService: any;
 
   beforeEach(() => {
     zoneRepo = mockRepo();
@@ -28,7 +33,11 @@ describe('ShippingAdminService', () => {
       // so this repo doesn't need special behavior for these formula tests
     });
     methodRepo = mockRepo();
+    zoneMethodRepo = mockRepo();
+    providerRepo = mockRepo();
     rateRepo = mockRepo();
+    channelRepo = mockRepo();
+    locationRepo = mockRepo();
 
     cache = {
       delByPrefix: jest.fn().mockResolvedValue(undefined),
@@ -36,12 +45,21 @@ describe('ShippingAdminService', () => {
       remember: jest.fn((_: string, fn: any) => fn()),
     };
 
+    currencyService = {
+      convert: jest.fn().mockResolvedValue(100),
+    };
+
     svc = new ShippingAdminService(
       zoneRepo,
       zoneLocationRepo,
       methodRepo,
+      zoneMethodRepo,
+      providerRepo,
       rateRepo,
+      channelRepo,
+      locationRepo,
       cache,
+      currencyService,
     );
   });
 

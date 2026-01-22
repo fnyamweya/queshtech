@@ -13,7 +13,9 @@ describe('ShippingMatrixService', () => {
   let zoneRepo: any;
   let locRepo: any;
   let methodRepo: any;
+  let zoneMethodRepo: any;
   let rateRepo: any;
+  let channelRepo: any;
   let cache: any;
 
   beforeEach(() => {
@@ -22,7 +24,9 @@ describe('ShippingMatrixService', () => {
     });
     locRepo = mockRepo();
     methodRepo = mockRepo();
+    zoneMethodRepo = mockRepo();
     rateRepo = mockRepo();
+    channelRepo = mockRepo();
 
     cache = {
       remember: jest.fn((_: string, fn: any) => fn()),
@@ -34,7 +38,9 @@ describe('ShippingMatrixService', () => {
       zoneRepo,
       locRepo,
       methodRepo,
+      zoneMethodRepo,
       rateRepo,
+      channelRepo,
       cache,
     );
   });
