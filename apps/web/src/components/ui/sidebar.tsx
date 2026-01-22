@@ -1,6 +1,6 @@
 "use client"
 
-import { CSSProperties, ComponentProps, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { CSSProperties, ComponentProps, ComponentPropsWithoutRef, ElementRef, createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { VariantProps, cva } from "class-variance-authority"
 import PanelLeftIcon from "lucide-react/dist/esm/icons/panel-left"
@@ -495,7 +495,14 @@ const sidebarMenuButtonVariants = cva(
   }
 )
 
-function SidebarMenuButton({
+const SidebarMenuButton = forwardRef<
+  ElementRef<"button">,
+  ComponentPropsWithoutRef<"button"> & {
+    asChild?: boolean
+    isActive?: boolean
+    tooltip?: string | ComponentProps<typeof TooltipContent>
+  } & VariantProps<typeof sidebarMenuButtonVariants>
+>(function SidebarMenuButton({
   asChild = false,
   isActive = false,
   variant = "default",
@@ -503,11 +510,7 @@ function SidebarMenuButton({
   tooltip,
   className,
   ...props
-}: ComponentProps<"button"> & {
-  asChild?: boolean
-  isActive?: boolean
-  tooltip?: string | ComponentProps<typeof TooltipContent>
-} & VariantProps<typeof sidebarMenuButtonVariants>) {
+}, ref) {
   const Comp = asChild ? Slot : "button"
   const { isMobile, state } = useSidebar()
 
@@ -518,6 +521,7 @@ function SidebarMenuButton({
       data-size={size}
       data-active={isActive}
       className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+      ref={ref}
       {...props}
     />
   )
@@ -543,7 +547,9 @@ function SidebarMenuButton({
       />
     </Tooltip>
   )
-}
+})
+
+SidebarMenuButton.displayName = "SidebarMenuButton"
 
 function SidebarMenuAction({
   className,
@@ -666,17 +672,20 @@ function SidebarMenuSubItem({
   )
 }
 
-function SidebarMenuSubButton({
+const SidebarMenuSubButton = forwardRef<
+  ElementRef<"a">,
+  ComponentPropsWithoutRef<"a"> & {
+    asChild?: boolean
+    size?: "sm" | "md"
+    isActive?: boolean
+  }
+>(function SidebarMenuSubButton({
   asChild = false,
   size = "md",
   isActive = false,
   className,
   ...props
-}: ComponentProps<"a"> & {
-  asChild?: boolean
-  size?: "sm" | "md"
-  isActive?: boolean
-}) {
+}, ref) {
   const Comp = asChild ? Slot : "a"
 
   return (
@@ -693,10 +702,13 @@ function SidebarMenuSubButton({
         "group-data-[collapsible=icon]:hidden",
         className
       )}
+      ref={ref}
       {...props}
     />
   )
-}
+})
+
+SidebarMenuSubButton.displayName = "SidebarMenuSubButton"
 
 export {
   Sidebar,

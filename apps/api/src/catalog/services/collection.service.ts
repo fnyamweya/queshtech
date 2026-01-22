@@ -60,6 +60,7 @@ export class CollectionService {
         ruleType: payload.ruleType ?? CollectionRuleType.STATIC,
         rulePayload: payload.rulePayload ?? {},
         isActive: payload.isActive ?? true,
+        isHomepage: payload.isHomepage ?? false,
         priority: payload.priority ?? 0,
         validFrom: payload.validFrom,
         validTo: payload.validTo,
@@ -97,6 +98,11 @@ export class CollectionService {
       qb.andWhere('collection.isActive = :isActive', {
         isActive: filters.isActive,
       });
+    if (filters.isHomepage !== undefined) {
+      qb.andWhere('collection.isHomepage = :isHomepage', {
+        isHomepage: filters.isHomepage,
+      });
+    }
 
     const [data, total] = await qb.getManyAndCount();
     return { data, total, page, limit };
@@ -137,6 +143,7 @@ export class CollectionService {
       ruleType: payload.ruleType ?? existing.ruleType,
       rulePayload: payload.rulePayload ?? existing.rulePayload,
       isActive: payload.isActive ?? existing.isActive,
+      isHomepage: payload.isHomepage ?? existing.isHomepage,
       priority: payload.priority ?? existing.priority,
       validFrom: payload.validFrom ?? existing.validFrom,
       validTo: payload.validTo ?? existing.validTo,
@@ -211,6 +218,7 @@ export class CollectionService {
           avatarUrl: collection.avatarUrl,
           type: collection.type,
           priority: collection.priority,
+          isHomepage: collection.isHomepage,
           validFrom: collection.validFrom,
           validTo: collection.validTo,
           items,
@@ -235,6 +243,7 @@ export class CollectionService {
   async listPublicCollections(input?: {
     type?: string;
     isActive?: boolean;
+    isHomepage?: boolean;
     take?: number;
     itemsLimit?: number;
   }) {
@@ -259,6 +268,18 @@ export class CollectionService {
       isActive: input?.isActive ?? true,
     });
 
+    if (input?.isHomepage !== undefined) {
+      qb.andWhere('collection.isHomepage = :isHomepage', {
+        isHomepage: input.isHomepage,
+      });
+    }
+
+    if (input?.isHomepage !== undefined) {
+      qb.andWhere('collection.isHomepage = :isHomepage', {
+        isHomepage: input.isHomepage,
+      });
+    }
+
     // Only collections within validity window (or no window).
     qb.andWhere('(collection.validFrom IS NULL OR collection.validFrom <= :now)', {
       now,
@@ -279,6 +300,7 @@ export class CollectionService {
         avatarUrl: collection.avatarUrl,
         type: collection.type,
         priority: collection.priority,
+        isHomepage: collection.isHomepage,
         validFrom: collection.validFrom,
         validTo: collection.validTo,
         items,

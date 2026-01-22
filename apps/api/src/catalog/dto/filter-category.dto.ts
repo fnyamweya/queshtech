@@ -14,4 +14,9 @@ export class FilterCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter by homepage flag', example: true })
+  @IsOptional()
+  @IsBoolean()
+  isHomepage?: boolean;
 }

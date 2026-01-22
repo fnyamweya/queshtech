@@ -8,7 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Link, useRoute } from 'wouter'
 import { useCatalogCategories } from '@/hooks/use-catalog-categories'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
-import { resolvePhosphorIcon } from '@/lib/phosphor'
+import { ValueIcon } from '@/components/common/value-icon'
+import { LniIcon } from '@/components/common/lni-icon'
 
 export function AdminCategoryViewPage() {
   const [, params] = useRoute('/axis/categories/:id')
@@ -42,11 +43,7 @@ export function AdminCategoryViewPage() {
             <Badge variant="outline">catalog</Badge>
           </CardHeader>
           <CardContent className="space-y-4">
-            {isLoading && (
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                Loading category…
-              </div>
-            )}
+            {isLoading ? null : null}
 
             {!isLoading && error && (
               <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
@@ -66,10 +63,7 @@ export function AdminCategoryViewPage() {
                   <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
                     <p className="text-[11px] uppercase text-muted-foreground tracking-wide">Icon</p>
                     <div className="h-10 w-10 rounded-md border bg-background flex items-center justify-center">
-                      {(() => {
-                        const Icon = resolvePhosphorIcon(category.icon)
-                        return Icon ? <Icon size={18} weight="bold" /> : <span className="text-xs text-muted-foreground">None</span>
-                      })()}
+                      {category.icon ? <ValueIcon value={category.icon} size={18} /> : <span className="text-xs text-muted-foreground">None</span>}
                     </div>
                   </div>
                   <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
@@ -115,10 +109,20 @@ export function AdminCategoryViewPage() {
 
             <div className="flex items-center gap-2">
               <Button asChild disabled={!categoryId}>
-                <Link href={`/axis/categories/${categoryId ?? 'category'}/edit`}>Edit category</Link>
+                <Link href={`/axis/categories/${categoryId ?? 'category'}/edit`}>
+                  <span className="inline-flex items-center">
+                    <LniIcon name="lni-pencil-1" size={16} className="mr-2" />
+                    Edit category
+                  </span>
+                </Link>
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/axis/categories">Back</Link>
+                <Link href="/axis/categories">
+                  <span className="inline-flex items-center">
+                    <LniIcon name="lni-arrow-left" size={16} className="mr-2" />
+                    Back
+                  </span>
+                </Link>
               </Button>
             </div>
           </CardContent>

@@ -4,6 +4,7 @@ export interface Product {
   brand: string
   slug: string
   description: string
+  shortDescription?: string
   price: number
   compareAtPrice?: number
   currency: string
@@ -14,16 +15,27 @@ export interface Product {
   inStock: boolean
   stockCount?: number
   variants: ProductVariant[]
+  skus?: ProductSku[]
   specifications: Record<string, string>
   badges?: ProductBadge[]
   tags?: string[]
+}
+
+export interface ProductSku {
+  id: string
+  code?: string
+  title?: string
+  options?: Record<string, string>
+  isDefault?: boolean
 }
 
 export interface ProductImage {
   id: string
   url: string
   alt: string
+  skuId?: string
   isPrimary?: boolean
+  sortOrder?: number
 }
 
 export interface ProductVariant {
@@ -38,15 +50,51 @@ export interface ProductVariant {
 
 export interface Category {
   id: string
+  taxonomyId?: string
+  key?: string
   name: string
   slug: string
   description?: string
+  seoTitle?: string
+  seoDescription?: string
+  seoKeywords?: string[]
+  urlPath?: string
   image?: string
   imageUrl?: string
   avatarUrl?: string
   icon?: string
   parentId?: string
   productCount?: number
+  isActive?: boolean
+  isHomepage?: boolean
+  sortOrder?: number
+  locale?: string
+  synonyms?: string
+  keywords?: string
+  status?: string
+  level?: string
+  audience?: string
+  returnPolicy?: string
+  taxCode?: string
+  highlight?: boolean
+  navPlacement?: boolean
+  featured?: boolean
+  banner?: string
+  marginTarget?: number
+  availability?: string
+  compliance?: string
+  shippingProfile?: string
+  marketingHeadline?: string
+  marketingSub?: string
+  heroCta?: string
+  heroCtaLink?: string
+  contentPillar?: string
+  story?: string
+  themeColor?: string
+  shippingMatrix?: Array<{ region: string; sla: string; surcharge: string }>
+  metaJson?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface Taxonomy {
@@ -77,6 +125,8 @@ export interface ProductBadge {
 export interface CartItem {
   id: string
   product: Product
+  productSkuId: string
+  skuCode?: string
   quantity: number
   selectedVariants: Record<string, string>
   price: number

@@ -18,11 +18,13 @@ import {
   Tag,
   Trash,
 } from '@phosphor-icons/react'
-import { mockProducts, mockCategories } from '@/data/mock-data'
 import { getAlgoliaCatalogPublicConfig } from '@/lib/algolia-catalog'
 import { createApiClient } from '@/lib/api-client'
 import { endpoints } from '@/lib/endpoints'
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '@/lib/recent-searches'
+import { usePublicCategories } from '@/hooks/use-catalog-categories'
+import { mapToProduct } from '@/lib/product-mapper'
+import type { Product } from '@/types'
 
 interface SearchCommandProps {
   open: boolean
@@ -83,9 +85,13 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
   const [debounceMs, setDebounceMs] = useState(150)
   const [isAlgoliaLoading, setIsAlgoliaLoading] = useState(false)
   const [recentSearches, setRecentSearches] = useState<string[]>([])
+  const [publicProducts, setPublicProducts] = useState<Product[]>([])
+  const [isPublicLoading, setIsPublicLoading] = useState(false)
   const [algoliaProducts, setAlgoliaProducts] = useState<
     Array<{ id: string; slug: string; title: string; brandName?: string; imageUrl?: string }>
   >([])
+
+  const { categories: publicCategories } = usePublicCategories({ isActive: true, limit: 100 })
 
   useEffect(() => {
     let mounted = true
@@ -155,53 +161,84 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
     }
   }, [algoliaEnabled, api, debounceMs, minQueryLength, query])
 
+  useEffect(() => {
+    if (!open) return
+    if (algoliaEnabled) return
+
+    let cancelled = false
+    const q = query.trim()
+    const shouldSearch = q.length >= 2
+    const limit = shouldSearch ? 8 : 5
+
+    const t = window.setTimeout(() => {
+      void (async () => {
+        setIsPublicLoading(true)
+        try {
+          const payload = await api.get(
+            endpoints.catalog.publicProductsView({
+              page: 1,
+              limit,
+              q: shouldSearch ? q : undefined,
+              sort: shouldSearch ? undefined : 'newest',
+            })
+          )
+          if (cancelled) return
+          const list = Array.isArray((payload as any)?.items)
+            ? (payload as any).items
+            : Array.isArray((payload as any)?.data?.items)
+              ? (payload as any).data.items
+              : Array.isArray(payload)
+                ? payload
+                : []
+          const mapped = (list as any[]).map(mapToProduct).filter(Boolean) as Product[]
+          setPublicProducts(mapped)
+        } catch {
+          if (cancelled) return
+          setPublicProducts([])
+        } finally {
+          if (!cancelled) setIsPublicLoading(false)
+        }
+      })()
+    }, shouldSearch ? debounceMs : 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [algoliaEnabled, api, debounceMs, open, query])
+
   const searchResults = useMemo(() => {
     // If Algolia is enabled, treat categories as quick links for now.
     if (algoliaEnabled) {
       const qlen = query.trim().length
       return {
         products: algoliaProducts,
-        categories: qlen >= minQueryLength ? [] : mockCategories.slice(0, 4),
+        categories: qlen >= minQueryLength ? [] : publicCategories.slice(0, 4),
       }
     }
 
-    if (!query || query.length < 2) {
-      return {
-        products: mockProducts.slice(0, 5),
-        categories: mockCategories.slice(0, 4),
-      }
-    }
-
-    const productMatches = mockProducts
-      .map((product) => ({
-        product,
-        score: Math.max(
-          fuzzyMatch(product.name, query),
-          fuzzyMatch(product.brand, query),
-          fuzzyMatch(product.description, query),
-          ...(product.tags?.map((tag) => fuzzyMatch(tag, query)) || [0]),
-        ),
-      }))
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
-      .map(({ product }) => product)
-
-    const categoryMatches = mockCategories
-      .map((category) => ({
-        category,
-        score: Math.max(fuzzyMatch(category.name, query), fuzzyMatch(category.description || '', query)),
-      }))
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 4)
-      .map(({ category }) => category)
+    const q = query.trim()
+    const showDefaultCategories = q.length === 0
+    const categoryMatches = showDefaultCategories
+      ? publicCategories.slice(0, 4)
+      : publicCategories
+          .map((category) => ({
+            category,
+            score: Math.max(
+              fuzzyMatch(category.name, q),
+              fuzzyMatch(category.description || '', q)
+            ),
+          }))
+          .filter(({ score }) => score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 4)
+          .map(({ category }) => category)
 
     return {
-      products: productMatches,
+      products: publicProducts,
       categories: categoryMatches,
     }
-  }, [algoliaEnabled, algoliaProducts, minQueryLength, query])
+  }, [algoliaEnabled, algoliaProducts, minQueryLength, publicCategories, publicProducts, query])
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -239,10 +276,11 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
     setLocation(`/search?q=${encodeURIComponent(trimmed)}`)
   }
 
-  const formatPrice = (price: number) => {
+  const formatPrice = (price: number, currency?: string | null) => {
+    const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
     return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
+      style: hasCurrency ? 'currency' : 'decimal',
+      currency: hasCurrency ? currency : undefined,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(price)
@@ -265,7 +303,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
       />
       <CommandList className={showQuickActions ? 'max-h-[360px] sm:max-h-[460px]' : 'max-h-[420px] sm:max-h-[520px]'}>
         <CommandEmpty>
-          {isAlgoliaLoading ? (
+          {isAlgoliaLoading || isPublicLoading ? (
             <div className="flex flex-col items-center gap-3 py-8">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
               <p className="text-sm text-muted-foreground">Searching…</p>
@@ -368,7 +406,7 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                   <div className="flex flex-col">
                     <span className="font-medium">{highlightText(category.name, query)}</span>
                     <span className="text-xs text-muted-foreground">
-                      {category.productCount} products
+                        {typeof category.productCount === 'number' ? `${category.productCount} products` : 'Browse products'}
                     </span>
                   </div>
                 </CommandItem>
@@ -406,9 +444,9 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
                     </div>
                     {!algoliaEnabled ? (
                       <div className="text-right flex-shrink-0">
-                        <p className="font-semibold text-sm text-primary">{formatPrice(product.price)}</p>
+                        <p className="font-semibold text-sm text-primary">{formatPrice(product.price, product.currency)}</p>
                         {product.compareAtPrice && (
-                          <p className="text-xs text-muted-foreground line-through">{formatPrice(product.compareAtPrice)}</p>
+                          <p className="text-xs text-muted-foreground line-through">{formatPrice(product.compareAtPrice, product.currency)}</p>
                         )}
                       </div>
                     ) : null}
@@ -424,27 +462,27 @@ export function SearchCommand({ open, onOpenChange }: SearchCommandProps) {
         <div className="border-t border-border/60 bg-popover/95 backdrop-blur supports-[backdrop-filter]:bg-popover/80">
           <CommandGroup heading="Quick actions" className="p-2">
             <CommandItem
-              onSelect={() => handleSelect(() => setLocation('/category/smartphones-tablets'))}
+              onSelect={() => handleSelect(() => setLocation('/category/phones'))}
               className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
             >
               <div className="h-9 w-9 rounded-lg bg-accent/20 text-accent flex items-center justify-center">
                 <Sparkle size={18} weight="bold" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">View New Arrivals</p>
-                <p className="text-xs text-muted-foreground truncate">Fresh drops and just-in items</p>
+                <p className="font-medium truncate">Shop Phones</p>
+                <p className="text-xs text-muted-foreground truncate">Flagships, budget picks, and tablets</p>
               </div>
             </CommandItem>
             <CommandItem
-              onSelect={() => handleSelect(() => setLocation('/category/gaming'))}
+              onSelect={() => handleSelect(() => setLocation('/category/accessories'))}
               className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-accent/60"
             >
               <div className="h-9 w-9 rounded-lg bg-accent/20 text-accent flex items-center justify-center">
                 <Package size={18} weight="bold" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">Gaming Deals</p>
-                <p className="text-xs text-muted-foreground truncate">Top discounts on gear</p>
+                <p className="font-medium truncate">Accessories</p>
+                <p className="text-xs text-muted-foreground truncate">Chargers, cables, networking, and more</p>
               </div>
             </CommandItem>
           </CommandGroup>

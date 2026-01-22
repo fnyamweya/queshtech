@@ -1,6 +1,6 @@
 "use client"
 
-import { ComponentProps } from "react"
+import { ComponentProps, ComponentPropsWithoutRef, ElementRef, forwardRef } from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
@@ -12,13 +12,16 @@ function AlertDialog({
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
 }
 
-function AlertDialogTrigger({
-  ...props
-}: ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
+const AlertDialogTrigger = forwardRef<
+  ElementRef<typeof AlertDialogPrimitive.Trigger>,
+  ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Trigger>
+>((props, ref) => {
   return (
-    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />
+    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" ref={ref} {...props} />
   )
-}
+})
+
+AlertDialogTrigger.displayName = "AlertDialogTrigger"
 
 function AlertDialogPortal({
   ...props

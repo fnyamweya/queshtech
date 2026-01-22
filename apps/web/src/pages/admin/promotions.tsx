@@ -538,7 +538,7 @@ export function AdminPromotionsPage() {
       actions={
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={refresh} disabled={isLoading}>
-            <RefreshCcw className={cn('h-4 w-4 mr-2', isLoading && 'animate-spin')} />
+            <RefreshCcw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
           <Button size="sm" onClick={onNew}>
@@ -682,7 +682,7 @@ export function AdminPromotionsPage() {
                   onClick={onToggleActive}
                   disabled={!draftId || isToggling}
                 >
-                  {isToggling ? <RefreshCcw className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+                  <Zap className="h-4 w-4 mr-2" />
                   {isActive ? 'Deactivate' : 'Activate'}
                 </Button>
               </div>
@@ -836,7 +836,7 @@ export function AdminPromotionsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <Button onClick={onSave} disabled={isSaving || !isDirty}>
-                  {isSaving ? <RefreshCcw className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  <Save className="h-4 w-4 mr-2" />
                   Save
                 </Button>
               </div>

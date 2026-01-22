@@ -29,6 +29,31 @@ export type AdminAuthContextValue = {
 }
 
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null)
+let warnedMissingAdminProvider = false
+
+const fallbackAdminAuth: AdminAuthContextValue = {
+  adminUser: null,
+  accessToken: null,
+  refreshToken: null,
+  isAuthenticated: false,
+  isReady: true,
+  isInitialized: true,
+  isLoading: false,
+  login: async () => ({ success: false, error: 'Admin auth unavailable' }),
+  loginWithGoogle: () => undefined,
+  inviteUser: async () => ({ success: false, error: 'Admin auth unavailable' }),
+  logout: () => undefined,
+  refreshSession: async () => ({ success: false, error: 'Admin auth unavailable' }),
+  authorizedRequest: async () => {
+    throw new Error('AdminAuthProvider is missing')
+  },
+  getProfile: async () => {
+    throw new Error('AdminAuthProvider is missing')
+  },
+  updateProfile: async () => {
+    throw new Error('AdminAuthProvider is missing')
+  },
+}
 
 const toAdminUser = (payload: any, fallback: Partial<AdminUser>): AdminUser => {
   const now = new Date().toISOString()
@@ -53,6 +78,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false)
 
   const refreshInFlightRef = useRef<Promise<RefreshResult> | null>(null)
+  const failedRefreshTokenRef = useRef<string | null>(null)
+  const failedRefreshAtRef = useRef<number>(0)
+  const refreshBackoffMs = 5 * 60_000
 
   const clearAuth = useCallback(() => {
     setAdminUser(() => null)
@@ -213,6 +241,14 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Missing refresh token' }
     }
 
+    if (failedRefreshTokenRef.current === refreshToken) {
+      const elapsed = Date.now() - failedRefreshAtRef.current
+      if (elapsed < refreshBackoffMs) {
+        clearAuth()
+        return { success: false, error: 'Refresh token previously rejected' }
+      }
+    }
+
     if (refreshInFlightRef.current) {
       return refreshInFlightRef.current
     }
@@ -236,12 +272,17 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(nextAccessToken)
         if (nextRefreshToken) setRefreshToken(nextRefreshToken)
 
+        failedRefreshTokenRef.current = null
+        failedRefreshAtRef.current = 0
+
         const expFromResponse = (body as any)?.accessTokenExpiresAt
         const expMs = typeof expFromResponse === 'string' ? Date.parse(expFromResponse) : getJwtExpiryMs(nextAccessToken)
         if (expMs && Number.isFinite(expMs)) setAccessTokenExpiresAt(new Date(expMs).toISOString())
 
         return { success: true, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined }
       } catch (error) {
+        failedRefreshTokenRef.current = refreshToken
+        failedRefreshAtRef.current = Date.now()
         clearAuth()
         const message = error instanceof ApiError ? error.message : 'Session refresh failed'
         return { success: false, error: message }
@@ -372,13 +413,11 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       if (isReady) return
 
       try {
-        if (accessToken) {
-          await getProfileWithToken(accessToken)
-        } else {
-          // Try cookie-based admin session, if present.
-          await getProfile()
-        }
-      } catch (e) {
+        // Only probe profile when tokens exist.
+        if (!accessToken && !refreshToken) return
+
+        await getProfileWithToken(accessToken ?? '')
+      } catch {
         // If profile load fails, treat as signed-out.
         clearAuth()
       } finally {
@@ -389,7 +428,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false
     }
-  }, [accessToken, clearAuth, getProfile, getProfileWithToken, isReady])
+  }, [accessToken, clearAuth, getProfileWithToken, isReady, refreshToken])
 
   const value = useMemo<AdminAuthContextValue>(() => {
     const isAuthenticated = Boolean(adminUser)
@@ -417,6 +456,18 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
 export function useAdminAuth() {
   const ctx = useContext(AdminAuthContext)
-  if (!ctx) throw new Error('useAdminAuth must be used within AdminAuthProvider')
+  if (!ctx) {
+    const mode = import.meta.env.MODE || 'production'
+    if (mode === 'production') {
+      throw new Error('useAdminAuth must be used within AdminAuthProvider')
+    }
+
+    if (!warnedMissingAdminProvider) {
+      warnedMissingAdminProvider = true
+      // eslint-disable-next-line no-console
+      console.error('useAdminAuth must be used within AdminAuthProvider')
+    }
+    return fallbackAdminAuth
+  }
   return ctx
 }

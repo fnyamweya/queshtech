@@ -94,7 +94,6 @@ type SkuDraft = {
   options: Record<string, string>
   availability: AvailabilityDraft
   inventoryLocations: InventoryLocationDraft[]
-  images: string[]
   requiresShipping: boolean
   weight: string
   length: string
@@ -117,6 +116,7 @@ type ProductEditorDraft = {
   tags: string[]
   optionDefinitions: OptionDefinitionDraft[]
   skus: SkuDraft[]
+  images: string[]
 }
 
 function uniq(list: string[]): string[] {
@@ -473,7 +473,6 @@ const blankSku = (): SkuDraft => ({
   options: {},
   availability: blankAvailability(),
   inventoryLocations: [{ code: '', onHand: '', reserved: '' }],
-  images: [],
   requiresShipping: true,
   weight: '',
   length: '',
@@ -494,6 +493,11 @@ function toDraft(product?: any): ProductEditorDraft {
     externalRef: product?.externalRef ?? '',
     brandId: product?.brandId ?? '',
     categoryIds: Array.isArray(product?.categoryIds) ? [...product.categoryIds] : [],
+    images: Array.isArray(product?.images)
+      ? product.images
+          .map((img: any) => (typeof img === 'string' ? img : img?.url))
+          .filter(Boolean)
+      : [],
     tags: Array.isArray(product?.metaJson?.tags)
       ? product.metaJson.tags.map((t: any) => String(t).trim()).filter(Boolean)
       : [],
@@ -534,7 +538,6 @@ function toDraft(product?: any): ProductEditorDraft {
                 reserved: row?.reserved !== undefined ? String(row.reserved) : '',
               }))
             : [{ code: '', onHand: '', reserved: '' }],
-          images: Array.isArray(s.images) ? s.images : [],
           requiresShipping: typeof s.requiresShipping === 'boolean' ? s.requiresShipping : true,
           weight: s.weight !== undefined ? String(s.weight) : '',
           length: s.length !== undefined ? String(s.length) : '',
@@ -745,8 +748,6 @@ export function ProductEditorV2(props: {
   }
   const uploadRef = useRef<CommonUploadHandle | null>(null)
   const [pendingMediaCount, setPendingMediaCount] = useState(0)
-  const [mediaSkuIndex, setMediaSkuIndex] = useState(0)
-  const [pendingMediaSkuIndex, setPendingMediaSkuIndex] = useState<number | null>(null)
 
   const { channels } = useChannels({ token: props.token })
   const { locations } = useLocations({ token: props.token })
@@ -848,23 +849,10 @@ export function ProductEditorV2(props: {
   const imagesRequired = props.mode === 'create'
   const skuLabel = (s: SkuDraft, idx: number) => (s.sku?.trim() || s.title?.trim() || `SKU #${idx + 1}`).trim()
   const skuIsMeaningful = (s: SkuDraft) => Boolean(s.sku?.trim() || s.title?.trim())
-  const skuImageCount = (idx: number) =>
-    (draft.skus[idx]?.images || []).length + (pendingMediaSkuIndex === idx ? pendingMediaCount : 0)
-
-  const missingImageSkuIndexes = useMemo(() => {
-    if (!imagesRequired) return []
-    return draft.skus
-      .map((s, idx) => ({ s, idx }))
-      .filter(({ s }) => skuIsMeaningful(s))
-      .filter(({ idx }) => skuImageCount(idx) === 0)
-      .map(({ idx }) => idx)
-  }, [draft.skus, imagesRequired, pendingMediaCount, pendingMediaSkuIndex])
 
   const hasSku = draft.skus.some((s) => s.sku.trim())
-  const hasImages = draft.skus.some((s) => (s.images || []).length > 0) || pendingMediaCount > 0
-  const imagesComplete = imagesRequired
-    ? draft.skus.some((s) => skuIsMeaningful(s)) && missingImageSkuIndexes.length === 0
-    : hasImages
+  const hasImages = draft.images.length > 0 || pendingMediaCount > 0
+  const imagesComplete = imagesRequired ? hasImages : hasImages
   const hasPricing = draft.skus.some((s) => s.prices.some((p) => p.priceListId.trim() && p.unitPrice.trim()))
   const skuAvailabilityConfigured = draft.skus.some(
     (s) =>
@@ -905,7 +893,7 @@ export function ProductEditorV2(props: {
   const coreChecks = [
     { label: 'Title set', ok: Boolean(draft.title.trim()), optional: false },
     { label: 'At least one SKU', ok: hasSku, optional: false },
-    ...(imagesRequired ? [{ label: 'Images per SKU', ok: imagesComplete, optional: false }] : []),
+    ...(imagesRequired ? [{ label: 'Images added', ok: imagesComplete, optional: false }] : []),
   ]
   const optionalChecks = [
     ...(imagesRequired ? [] : [{ label: 'Images added', ok: hasImages, optional: true }]),
@@ -914,18 +902,6 @@ export function ProductEditorV2(props: {
   ]
   const coreReadyCount = coreChecks.filter((c) => c.ok).length
   const coreProgress = Math.round((coreReadyCount / coreChecks.length) * 100)
-
-  useEffect(() => {
-    setMediaSkuIndex((prev) => {
-      const max = Math.max(0, draft.skus.length - 1)
-      return Math.min(prev, max)
-    })
-    setPendingMediaSkuIndex((prev) => {
-      if (prev === null) return null
-      const max = Math.max(0, draft.skus.length - 1)
-      return Math.min(prev, max)
-    })
-  }, [draft.skus.length])
 
   const setDefaultSkuIndex = (idx: number) => {
     setDraft((p) => ({ ...p, skus: p.skus.map((s, i) => ({ ...s, isDefault: i === idx })) }))
@@ -1058,13 +1034,10 @@ export function ProductEditorV2(props: {
         }
       }
 
-      const targetSkuIndex = pendingMediaSkuIndex ?? mediaSkuIndex
       draftWithUploadedImages = uploadedUrls.length
         ? {
             ...draft,
-            skus: draft.skus.map((s, idx) =>
-              idx === targetSkuIndex ? { ...s, images: uniq([...(s.images || []), ...uploadedUrls]) } : s,
-            ),
+            images: uniq([...(draft.images || []), ...uploadedUrls]),
           }
         : draft
 
@@ -1075,14 +1048,8 @@ export function ProductEditorV2(props: {
     }
 
     if (saveMode !== 'prices' && imagesRequired) {
-      const missing = draftWithUploadedImages.skus
-        .map((s, idx) => ({ s, idx }))
-        .filter(({ s }) => skuIsMeaningful(s))
-        .filter(({ s }) => (s.images || []).length === 0)
-
-      if (missing.length) {
-        const imageErrors: Record<string, string> = {}
-        for (const { idx } of missing) imageErrors[`images.${idx}`] = 'Add at least one image for this SKU.'
+      if (!draftWithUploadedImages.images.length) {
+        const imageErrors: Record<string, string> = { images: 'Add at least one product image.' }
         setErrors({ ...nextErrors, ...imageErrors })
         setTab('media')
         return
@@ -1121,6 +1088,9 @@ export function ProductEditorV2(props: {
       } else if (normalizedTags.length) {
         payload.metaJson = { tags: normalizedTags }
       }
+      payload.images = (draftWithUploadedImages.images || [])
+        .map((u, idx) => ({ url: u.trim(), isPrimary: idx === 0 }))
+        .filter((img) => img.url)
     }
 
     const ensuredDefaultIndex = draft.skus.findIndex((s) => s.isDefault)
@@ -1192,7 +1162,6 @@ export function ProductEditorV2(props: {
                 }
               : undefined,
             inventory,
-            images: (s.images || []).map((u) => u.trim()).filter(Boolean),
             requiresShipping: Boolean(s.requiresShipping),
             weight: numOrU(s.weight),
             length: numOrU(s.length),
@@ -1307,7 +1276,7 @@ export function ProductEditorV2(props: {
               />
 	              <AxisStat
 	                label="Images"
-	                value={draft.skus.reduce((sum, s) => sum + (s.images || []).length, 0) + pendingMediaCount}
+                  value={draft.images.length + pendingMediaCount}
 	                description={hasImages ? 'Media attached' : 'No media yet'}
 	                icon={<Images className="h-4 w-4" />}
 	              />
@@ -1619,60 +1588,31 @@ export function ProductEditorV2(props: {
 	              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
 	                <AxisSection
 	                  title="Media"
-                    description={imagesRequired ? 'Images are required per SKU on create.' : 'Upload images for a specific SKU.'}
+                    description={imagesRequired ? 'Add at least one product image.' : 'Upload product images.'}
 	                  icon={<Images className="h-4 w-4" />}
 	                  actions={
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={String(mediaSkuIndex)}
-                          onValueChange={(v) => setMediaSkuIndex(Number(v))}
-                          disabled={props.isSaving || draft.skus.length === 0 || pendingMediaCount > 0}
+                      pendingMediaCount ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => uploadRef.current?.clear()}
+                          disabled={props.isSaving}
                         >
-                          <SelectTrigger className="w-[240px] h-10">
-                            <SelectValue placeholder="Select SKU" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {draft.skus.map((s, idx) => (
-                              <SelectItem key={idx} value={String(idx)}>
-                                {skuLabel(s, idx)}{s.isDefault ? ' • default' : ''} • {skuImageCount(idx)} image
-                                {skuImageCount(idx) === 1 ? '' : 's'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {pendingMediaCount ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => uploadRef.current?.clear()}
-                            disabled={props.isSaving}
-                          >
-                            Clear pending
-                          </Button>
-                        ) : null}
-                      </div>
+                          Clear pending
+                        </Button>
+                      ) : null
 	                  }
 	                >
-                    {imagesRequired && missingImageSkuIndexes.length ? (
+                    {errors.images ? (
                       <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-                        Add at least one image for each SKU: {missingImageSkuIndexes.map((i) => skuLabel(draft.skus[i], i)).join(', ')}
+                        {errors.images}
                       </div>
                     ) : null}
 
-                    {pendingMediaCount ? (
-                      <div className="text-xs text-muted-foreground">
-                        Pending uploads will attach to: {pendingMediaSkuIndex === null ? skuLabel(draft.skus[mediaSkuIndex], mediaSkuIndex) : skuLabel(draft.skus[pendingMediaSkuIndex], pendingMediaSkuIndex)}
-                      </div>
-                    ) : null}
-
-	                  {draft.skus.length === 0 ? (
-	                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-	                      Add a SKU first, then upload images to that SKU.
-	                    </div>
-	                  ) : (draft.skus[mediaSkuIndex]?.images || []).length ? (
+	                  {draft.images.length ? (
 	                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-	                      {(draft.skus[mediaSkuIndex]?.images || []).map((url) => (
-	                        <div key={url} className="group relative overflow-hidden rounded-lg border bg-muted/20">
+	                      {draft.images.map((url, idx) => (
+	                        <div key={`${url}-${idx}`} className="group relative overflow-hidden rounded-lg border bg-muted/20">
 	                          <AspectRatio ratio={4 / 3}>
 	                            <img src={url} alt="Product" className="h-full w-full object-cover" />
 	                          </AspectRatio>
@@ -1687,9 +1627,7 @@ export function ProductEditorV2(props: {
 	                                onClick={() => {
 	                                  setDraft((p) => ({
 	                                    ...p,
-	                                    skus: p.skus.map((s, idx) =>
-	                                      idx === mediaSkuIndex ? { ...s, images: (s.images || []).filter((x) => x !== url) } : s,
-	                                    ),
+	                                    images: p.images.filter((x, i) => !(x === url && i === idx)),
 	                                  }))
 	                                  setIsDirty(true)
 	                                }}
@@ -1697,7 +1635,7 @@ export function ProductEditorV2(props: {
 	                                disabled={props.isSaving}
                               >
                                 <X className="h-3 w-3" />
-                              </button>
+	                              </button>
                             </TooltipTrigger>
                             <TooltipContent sideOffset={6}>Remove image</TooltipContent>
                           </Tooltip>
@@ -1706,7 +1644,7 @@ export function ProductEditorV2(props: {
                     </div>
 	                  ) : (
 	                    <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-	                      No images yet for this SKU. Add hero and gallery shots.
+	                      No product images yet. Add hero and gallery shots.
 	                    </div>
 	                  )}
 
@@ -1720,11 +1658,10 @@ export function ProductEditorV2(props: {
 	                    accept="image/*"
 	                    imagesOnly
 	                    isPublic
-	                    disabled={props.isSaving || draft.skus.length === 0}
+                      disabled={props.isSaving}
 	                    token={props.token}
 	                    onFilesChange={(files) => {
 	                      setPendingMediaCount(files.length)
-                        setPendingMediaSkuIndex(files.length ? mediaSkuIndex : null)
 	                      if (files.length) setIsDirty(true)
 	                    }}
 	                    onUploaded={() => {}}
@@ -1943,10 +1880,9 @@ export function ProductEditorV2(props: {
                                 {s.sku || 'No SKU yet'} • {s.title || 'No title'}
                               </span>
                             </div>
-							<div className="flex items-center gap-2">
-							  <Badge variant="outline">{(s.images || []).length} image{(s.images || []).length === 1 ? '' : 's'}</Badge>
-							  {s.isDefault ? <Badge>Default</Badge> : <Badge variant="secondary">Secondary</Badge>}
-							</div>
+              <div className="flex items-center gap-2">
+                {s.isDefault ? <Badge>Default</Badge> : <Badge variant="secondary">Secondary</Badge>}
+              </div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4">
@@ -1954,24 +1890,6 @@ export function ProductEditorV2(props: {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-sm font-medium">Identifiers</div>
                               <div className="flex items-center gap-2">
-								<Button
-								  type="button"
-								  variant="outline"
-								  size="sm"
-								  onClick={() => {
-								    if (pendingMediaCount) {
-								      toast.error('Clear pending uploads first', {
-								        description: 'Pending uploads are locked to the currently selected SKU in Media.',
-								      })
-								      return
-								    }
-								    setMediaSkuIndex(idx)
-								    setTab('media')
-								  }}
-								  disabled={props.isSaving}
-								>
-								  Images
-								</Button>
                                 <Button
                                   type="button"
                                   variant="outline"

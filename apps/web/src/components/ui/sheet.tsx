@@ -1,4 +1,4 @@
-import { ComponentProps } from "react"
+import { ComponentProps, ComponentPropsWithoutRef, ElementRef, forwardRef } from "react"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import XIcon from "lucide-react/dist/esm/icons/x"
 
@@ -8,11 +8,14 @@ function Sheet({ ...props }: ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }
 
-function SheetTrigger({
-  ...props
-}: ComponentProps<typeof SheetPrimitive.Trigger>) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
-}
+const SheetTrigger = forwardRef<
+  ElementRef<typeof SheetPrimitive.Trigger>,
+  ComponentPropsWithoutRef<typeof SheetPrimitive.Trigger>
+>((props, ref) => {
+  return <SheetPrimitive.Trigger data-slot="sheet-trigger" ref={ref} {...props} />
+})
+
+SheetTrigger.displayName = "SheetTrigger"
 
 function SheetClose({
   ...props

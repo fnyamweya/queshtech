@@ -16,6 +16,9 @@ import { User } from '../user/entities/user.entity';
 import { Location } from '../location/entities/location.entity';
 import { CurrencyModule } from '../currency/currency.module';
 import { CustomerShippingAddressModule } from '../customer-shipping-address/customer-shipping-address.module';
+import { SmsModule } from '../sms/sms.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { OrderNotificationService } from './services/order-notification.service';
 import { OrderPaymentModule } from '../order-payment/order-payment.module';
 
 @Module({
@@ -38,9 +41,11 @@ import { OrderPaymentModule } from '../order-payment/order-payment.module';
     CurrencyModule,
     CustomerShippingAddressModule,
     OrderPaymentModule,
+    SmsModule,
+    WhatsappModule,
   ],
   controllers: [OrderController],
-  providers: [OrderService, TaxService],
+  providers: [OrderService, TaxService, OrderNotificationService],
   exports: [TypeOrmModule, OrderService],
 })
 export class OrderModule {}

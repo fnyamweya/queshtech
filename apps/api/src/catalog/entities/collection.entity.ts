@@ -26,6 +26,7 @@ export type CollectionRulePayload = {
 @Index('uq_collection_slug', ['slug'], { unique: true })
 @Index('idx_collection_active_type', ['isActive', 'type'])
 @Index('idx_collection_validity', ['validFrom', 'validTo'])
+@Index('idx_collection_homepage', ['isHomepage'])
 export class Collection {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -60,6 +61,9 @@ export class Collection {
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @Column({ name: 'is_homepage', type: 'boolean', default: false })
+  isHomepage: boolean;
 
   @Column({ type: 'integer', default: 0 })
   priority: number;

@@ -4,13 +4,16 @@ import { DataSource } from 'typeorm';
 import baseDataSource from '../data-source';
 
 async function migrate() {
+  const loggingEnv = (process.env.DB_LOGGING ?? '').trim();
+  const isLoggingEnabled = loggingEnv === 'true';
+
   const ds = new DataSource({
     ...(baseDataSource.options as any),
     // make behavior explicit for scripts
     migrationsRun: false,
     synchronize: false,
     dropSchema: false,
-    logging: true,
+    logging: isLoggingEnabled,
   });
 
   try {

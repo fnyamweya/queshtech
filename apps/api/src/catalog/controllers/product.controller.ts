@@ -54,7 +54,7 @@ export class ProductController {
   })
   @ApiOperation({ summary: 'Create product' })
   @ApiBody({
-    description: 'Product payload (SKU-level availability/images/pricing)',
+    description: 'Product payload (SKU-level availability/pricing; product-level images)',
     schema: {
       type: 'object',
       properties: {
@@ -121,10 +121,6 @@ export class ProductController {
                 type: 'object',
                 example: { locations: { NAIROBI: { onHand: 10, reserved: 2 } } },
               },
-              images: {
-                type: 'array',
-                items: { type: 'string', example: 'https://cdn.example.com/1.png' },
-              },
               requiresShipping: { type: 'boolean', example: true },
               weight: { type: 'number', example: 0.2 },
               length: { type: 'number', example: 10.5 },
@@ -153,6 +149,20 @@ export class ProductController {
           },
         },
         metaJson: { type: 'object', example: {} },
+        images: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', example: 'https://cdn.example.com/1.png' },
+              alt: { type: 'string', example: 'Front view' },
+              skuId: { type: 'string', format: 'uuid' },
+              isPrimary: { type: 'boolean', example: true },
+              sortOrder: { type: 'number', example: 0 },
+            },
+            required: ['url'],
+          },
+        },
       },
       required: ['title'],
     },

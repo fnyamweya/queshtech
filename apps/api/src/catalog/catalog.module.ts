@@ -17,6 +17,7 @@ import { ProductSkuPricing } from './entities/product-sku-pricing.entity';
 import { Brand } from './entities/brand.entity';
 import { ProductChannel } from './entities/product-channel.entity';
 import { ProductContextOverride } from './entities/product-context-override.entity';
+import { ProductImage } from './entities/product-image.entity';
 import { Collection } from './entities/collection.entity';
 import { CollectionItem } from './entities/collection-item.entity';
 import { CustomerProductView } from './entities/customer-product-view.entity';
@@ -81,6 +82,7 @@ import { SettingModule } from '../setting/setting.module';
       ProductSkuPricing,
       Brand,
       Channel,
+      ProductImage,
     ]),
     CustomerGroupMembershipModule,
     CurrencyModule,

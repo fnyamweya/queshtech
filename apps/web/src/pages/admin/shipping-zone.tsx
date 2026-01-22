@@ -24,7 +24,6 @@ type ShippingZone = {
   name?: string
   code?: string
   isActive?: boolean
-  priority?: number
 }
 
 type ZoneLocation = {
@@ -66,6 +65,7 @@ type ShippingRate = {
   amount?: number
   formula?: string
   table?: any
+  metaJson?: Record<string, unknown>
 }
 
 type MethodDraft = {
@@ -83,7 +83,13 @@ type RateDraft = {
   isActive: boolean
   amount: string
   formula: string
-  tableJson: string
+  formulaBase: string
+  formulaMultiplier: string
+  formulaSurcharge: string
+  formulaCustom: string
+  tableMeasure: string
+  tableTiers: Array<{ upto: string; price: string }>
+  metaJson?: Record<string, unknown>
 }
 
 type QuoteOption = {
@@ -191,7 +197,6 @@ export function AdminShippingZonePage() {
         name: z?.name ? String(z.name) : undefined,
         code: z?.code ? String(z.code) : undefined,
         isActive: typeof z?.isActive === 'boolean' ? z.isActive : undefined,
-        priority: typeof z?.priority === 'number' ? z.priority : undefined,
       })
     } catch (e: any) {
       toast.error('Failed to load zone', { description: e?.message || 'Please try again.' })
@@ -338,14 +343,34 @@ export function AdminShippingZonePage() {
       const payload = await authorizedRequest<any>(endpoints.shipping.ratesByMethod(selectedMethodId), { method: 'GET' })
       const list = asArray<any>(payload).map((r) => ({
         id: String(r?.id ?? ''),
-        name: r?.name ? String(r.name) : undefined,
+        name: r?.metaJson?.label
+          ? String(r.metaJson.label)
+          : r?.meta_json?.label
+            ? String(r.meta_json.label)
+            : r?.name
+              ? String(r.name)
+              : undefined,
         isActive: typeof r?.isActive === 'boolean' ? r.isActive : undefined,
         priority: typeof r?.priority === 'number' ? r.priority : undefined,
-        currency: r?.currency ? String(r.currency) : undefined,
+        currency: r?.currencyCode ? String(r.currencyCode) : r?.currency ? String(r.currency) : r?.currency?.code ? String(r.currency.code) : undefined,
         calculationType: r?.calculationType ? String(r.calculationType) : undefined,
-        amount: typeof r?.amount === 'number' ? r.amount : undefined,
-        formula: r?.formula ? String(r.formula) : undefined,
-        table: r?.table,
+        amount:
+          typeof r?.calculationType === 'string' && (r.calculationType === 'per_weight' || r.calculationType === 'per_item')
+            ? Number(r?.pricePerUnit ?? r?.price_per_unit ?? 0)
+            : Number(r?.price ?? r?.amount ?? 0),
+        formula: r?.metaJson?.formula
+          ? String(r.metaJson.formula)
+          : r?.meta_json?.formula
+            ? String(r.meta_json.formula)
+            : r?.calculationType === 'formula' && r?.price
+              ? String(r.price)
+              : undefined,
+        table: r?.metaJson?.tiers
+          ? { measure: r.metaJson.measure || 'subtotal', tiers: r.metaJson.tiers }
+          : r?.meta_json?.tiers
+            ? { measure: r.meta_json.measure || 'subtotal', tiers: r.meta_json.tiers }
+            : undefined,
+        metaJson: (r?.metaJson || r?.meta_json || undefined) as Record<string, unknown> | undefined,
       }))
       setRates(list.filter((r) => r.id))
     } catch (e: any) {
@@ -371,15 +396,28 @@ export function AdminShippingZonePage() {
 
   const beginEditRate = useCallback((rate: ShippingRate) => {
     setEditingRateId(rate.id)
+    const tableMeasure = rate.table?.measure ? String(rate.table.measure) : 'subtotal'
+    const tableTiers = Array.isArray(rate.table?.tiers)
+      ? rate.table.tiers.map((t: any) => ({
+          upto: String(t?.upto ?? ''),
+          price: String(t?.price ?? ''),
+        }))
+      : [{ upto: '', price: '' }]
     setRateDraft({
-      name: rate.name || '',
+      name: rate.name || (rate.metaJson?.label ? String(rate.metaJson.label) : ''),
       currency: rate.currency || 'KES',
       calculationType: rate.calculationType || 'flat',
       priority: typeof rate.priority === 'number' ? String(rate.priority) : '',
       isActive: rate.isActive !== false,
       amount: typeof rate.amount === 'number' ? String(rate.amount) : '',
       formula: rate.formula || '',
-      tableJson: rate.table ? JSON.stringify(rate.table, null, 2) : '',
+      formulaBase: 'subtotal',
+      formulaMultiplier: '1',
+      formulaSurcharge: '0',
+      formulaCustom: rate.formula || '',
+      tableMeasure,
+      tableTiers,
+      metaJson: rate.metaJson,
     })
   }, [])
 
@@ -592,34 +630,64 @@ export function AdminShippingZonePage() {
   const [rateType, setRateType] = useState('flat')
   const [rateAmount, setRateAmount] = useState('')
   const [rateFormula, setRateFormula] = useState('')
-  const [rateTableJson, setRateTableJson] = useState('')
+  const [rateFormulaBase, setRateFormulaBase] = useState('subtotal')
+  const [rateFormulaMultiplier, setRateFormulaMultiplier] = useState('1')
+  const [rateFormulaSurcharge, setRateFormulaSurcharge] = useState('0')
+  const [rateTableMeasure, setRateTableMeasure] = useState('subtotal')
+  const [rateTableTiers, setRateTableTiers] = useState<Array<{ upto: string; price: string }>>([
+    { upto: '', price: '' },
+  ])
   const [isCreatingRate, setIsCreatingRate] = useState(false)
 
   const canCreateRate = Boolean(selectedMethodId) && rateType.trim().length > 0
 
+  const buildFormulaExpression = useCallback((base: string, multiplier: string, surcharge: string) => {
+    const baseVar = base || 'subtotal'
+    const m = Number(multiplier || '1')
+    const s = Number(surcharge || '0')
+    const baseExpr = m === 1 ? baseVar : `${baseVar} * ${Number.isNaN(m) ? 1 : m}`
+    if (!s) return baseExpr
+    return `${baseExpr} + ${Number.isNaN(s) ? 0 : s}`
+  }, [])
+
   const handleCreateRate = useCallback(async () => {
     if (!selectedMethodId || !canCreateRate) return
 
-    let parsedTable: any = undefined
-    if (rateType === 'table_rate' && rateTableJson.trim()) {
-      try {
-        parsedTable = JSON.parse(rateTableJson)
-      } catch (e) {
-        toast.error('Invalid table JSON', { description: 'Please provide valid JSON for table rates.' })
-        return
-      }
+    const tiers = rateTableTiers
+      .map((t) => ({ upto: Number(t.upto), price: Number(t.price) }))
+      .filter((t) => Number.isFinite(t.upto) && Number.isFinite(t.price))
+
+    if (rateType === 'table_rate' && tiers.length === 0) {
+      toast.error('Add at least one tier', { description: 'Table rates need tiers with max value and price.' })
+      return
     }
+
+    const formulaExpr = rateFormula.trim()
+      ? rateFormula.trim()
+      : buildFormulaExpression(rateFormulaBase, rateFormulaMultiplier, rateFormulaSurcharge)
 
     setIsCreatingRate(true)
     try {
+      const metaJson: Record<string, unknown> = {}
+      if (rateName.trim()) metaJson.label = rateName.trim()
+      if (rateType === 'formula') metaJson.formula = formulaExpr
+      if (rateType === 'table_rate') {
+        metaJson.measure = rateTableMeasure
+        metaJson.tiers = tiers.map((t) => ({ upto: t.upto, price: String(t.price) }))
+      }
+
       const body = {
-        ...(rateName.trim() ? { name: rateName.trim() } : {}),
         calculationType: rateType,
-        currency: rateCurrency,
+        currencyCode: rateCurrency,
         ...(ratePriority.trim() ? { priority: Number(ratePriority) } : {}),
-        ...(rateAmount.trim() ? { amount: Number(rateAmount) } : {}),
-        ...(rateType === 'formula' && rateFormula.trim() ? { formula: rateFormula.trim() } : {}),
-        ...(rateType === 'table_rate' && parsedTable !== undefined ? { table: parsedTable } : {}),
+        ...(rateType === 'per_weight' || rateType === 'per_item'
+          ? rateAmount.trim()
+            ? { pricePerUnit: String(rateAmount.trim()) }
+            : {}
+          : rateAmount.trim()
+            ? { price: String(rateAmount.trim()) }
+            : {}),
+        ...(Object.keys(metaJson).length ? { metaJson } : {}),
       }
 
       await authorizedRequest<void>(endpoints.shipping.ratesByMethod(selectedMethodId), { method: 'POST', body })
@@ -627,39 +695,59 @@ export function AdminShippingZonePage() {
       setRateName('')
       setRateAmount('')
       setRateFormula('')
-      setRateTableJson('')
+      setRateFormulaBase('subtotal')
+      setRateFormulaMultiplier('1')
+      setRateFormulaSurcharge('0')
+      setRateTableMeasure('subtotal')
+      setRateTableTiers([{ upto: '', price: '' }])
       await loadRates()
     } catch (e: any) {
       toast.error('Failed to create rate', { description: e?.message || 'Please try again.' })
     } finally {
       setIsCreatingRate(false)
     }
-  }, [authorizedRequest, canCreateRate, loadRates, rateAmount, rateCurrency, rateFormula, rateName, ratePriority, rateTableJson, rateType, selectedMethodId])
+  }, [authorizedRequest, canCreateRate, loadRates, rateAmount, rateCurrency, rateFormula, rateFormulaBase, rateFormulaMultiplier, rateFormulaSurcharge, rateName, ratePriority, rateTableMeasure, rateTableTiers, rateType, selectedMethodId, buildFormulaExpression])
 
   const handleSaveRate = useCallback(async () => {
     if (!editingRateId || !rateDraft) return
 
-    let parsedTable: any = undefined
-    if (rateDraft.calculationType === 'table_rate' && rateDraft.tableJson.trim()) {
-      try {
-        parsedTable = JSON.parse(rateDraft.tableJson)
-      } catch {
-        toast.error('Invalid table JSON', { description: 'Please provide valid JSON for table rates.' })
-        return
-      }
+    const tiers = rateDraft.tableTiers
+      .map((t) => ({ upto: Number(t.upto), price: Number(t.price) }))
+      .filter((t) => Number.isFinite(t.upto) && Number.isFinite(t.price))
+
+    if (rateDraft.calculationType === 'table_rate' && tiers.length === 0) {
+      toast.error('Add at least one tier', { description: 'Table rates need tiers with max value and price.' })
+      return
     }
+
+    const formulaExpr = rateDraft.formulaCustom.trim()
+      ? rateDraft.formulaCustom.trim()
+      : buildFormulaExpression(rateDraft.formulaBase, rateDraft.formulaMultiplier, rateDraft.formulaSurcharge)
 
     setIsSavingRate(true)
     try {
+      const metaJson: Record<string, unknown> = {
+        ...(rateDraft.metaJson || {}),
+      }
+      if (rateDraft.name.trim()) metaJson.label = rateDraft.name.trim()
+      if (rateDraft.calculationType === 'formula') metaJson.formula = formulaExpr
+      if (rateDraft.calculationType === 'table_rate') {
+        metaJson.measure = rateDraft.tableMeasure
+        metaJson.tiers = tiers.map((t) => ({ upto: t.upto, price: String(t.price) }))
+      }
+
       await patchRate(editingRateId, {
-        ...(rateDraft.name.trim() ? { name: rateDraft.name.trim() } : {}),
         calculationType: rateDraft.calculationType,
-        currency: rateDraft.currency,
+        currencyCode: rateDraft.currency,
         ...(rateDraft.priority.trim() ? { priority: Number(rateDraft.priority) } : {}),
-        isActive: rateDraft.isActive,
-        ...(rateDraft.amount.trim() ? { amount: Number(rateDraft.amount) } : {}),
-        ...(rateDraft.calculationType === 'formula' && rateDraft.formula.trim() ? { formula: rateDraft.formula.trim() } : {}),
-        ...(rateDraft.calculationType === 'table_rate' && parsedTable !== undefined ? { table: parsedTable } : {}),
+        ...(rateDraft.calculationType === 'per_weight' || rateDraft.calculationType === 'per_item'
+          ? rateDraft.amount.trim()
+            ? { pricePerUnit: String(rateDraft.amount.trim()) }
+            : {}
+          : rateDraft.amount.trim()
+            ? { price: String(rateDraft.amount.trim()) }
+            : {}),
+        ...(Object.keys(metaJson).length ? { metaJson } : {}),
       })
       toast.success('Rate updated')
       cancelEditRate()
@@ -723,13 +811,53 @@ export function AdminShippingZonePage() {
   }, [authorizedRequest, canPreview, previewItemCount, previewLocationId, previewSubtotal, previewTotalWeight, zoneId])
 
   const derivedMethodOptions = useMemo(() => {
-    return methods.map((m) => ({ id: m.id, label: m.displayName || m.code || m.id }))
+    return methods.map((m) => {
+      const label = m.displayName || m.code || 'Shipping method'
+      const meta = [m.code, m.provider].filter(Boolean).join(' · ')
+      return { id: m.id, label, meta }
+    })
+  }, [methods])
+
+  const methodLabelById = useMemo(() => {
+    return new Map(methods.map((m) => [m.id, m.displayName || m.code || 'Shipping method']))
   }, [methods])
 
   const selectedMethodLabel = useMemo(() => {
     const m = methods.find((x) => x.id === selectedMethodId)
-    return m?.displayName || m?.code || selectedMethodId
+    if (!m) return ''
+    const label = m.displayName || m.code || 'Shipping method'
+    const meta = [m.code, m.provider].filter(Boolean).join(' · ')
+    return meta ? `${label} (${meta})` : label
   }, [methods, selectedMethodId])
+
+  const selectedMethod = useMemo(() => methods.find((m) => m.id === selectedMethodId), [methods, selectedMethodId])
+
+  const formatRateSummary = useCallback((r: ShippingRate) => {
+    if (r.calculationType === 'per_weight') return `${r.currency || 'KES'} ${r.amount ?? 0} per kg`
+    if (r.calculationType === 'per_item') return `${r.currency || 'KES'} ${r.amount ?? 0} per item`
+    if (r.calculationType === 'flat') return `${r.currency || 'KES'} ${r.amount ?? 0} flat`
+    if (r.calculationType === 'formula') return r.formula ? `Formula: ${r.formula}` : 'Formula rate'
+    if (r.calculationType === 'table_rate') {
+      const tiers = Array.isArray(r.table?.tiers) ? r.table?.tiers : []
+      const measure = r.table?.measure ? String(r.table.measure) : 'subtotal'
+      if (!tiers.length) return `Table rate (${measure})`
+      const preview = tiers
+        .slice(0, 2)
+        .map((t: any) => `≤ ${t?.upto ?? '?'}: ${r.currency || 'KES'} ${t?.price ?? 0}`)
+        .join(' · ')
+      return `Table rate (${measure}) • ${preview}${tiers.length > 2 ? '…' : ''}`
+    }
+    return ''
+  }, [])
+
+  const rateDetailLabel = useCallback((r: ShippingRate) => {
+    if (r.calculationType === 'flat') return 'Flat rate'
+    if (r.calculationType === 'per_weight') return 'Per kg'
+    if (r.calculationType === 'per_item') return 'Per item'
+    if (r.calculationType === 'table_rate') return 'Table tiers'
+    if (r.calculationType === 'formula') return 'Formula'
+    return 'Rate'
+  }, [])
 
   if (!zoneId) {
     return (
@@ -786,6 +914,9 @@ export function AdminShippingZonePage() {
               <CardDescription>Attach locations that this shipping zone applies to.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                Add country, region, or city nodes from the location tree. The most specific match wins.
+              </div>
               <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
                 <div className="space-y-2">
                   <Label htmlFor="locationId">Location</Label>
@@ -852,9 +983,10 @@ export function AdminShippingZonePage() {
               <Separator />
 
               {locations.length === 0 ? (
-                <div className="text-sm text-muted-foreground">{isLoadingLocations ? 'Loading destinations…' : 'No destinations yet.'}</div>
+                <div className="text-sm text-muted-foreground">No destinations yet.</div>
               ) : (
                 <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">Attached destinations</div>
                   {locations.map((l, index) => (
                     <div key={`${l.locationId}-${index}`} className="flex items-center justify-between gap-3 rounded-md border p-3">
                       <div className="min-w-0">
@@ -925,7 +1057,7 @@ export function AdminShippingZonePage() {
                 <Separator />
 
                 {methods.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">{isLoadingMethods ? 'Loading methods…' : 'No methods yet.'}</div>
+                  <div className="text-sm text-muted-foreground">No methods yet.</div>
                 ) : (
                   <div className="space-y-2">
                     {methods.map((m) => {
@@ -937,7 +1069,7 @@ export function AdminShippingZonePage() {
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <div className="font-medium truncate">{m.displayName || m.id}</div>
+                              <div className="font-medium truncate">{m.displayName || m.code || 'Shipping method'}</div>
                               <Badge variant={m.isActive === false ? 'secondary' : 'default'} className="shrink-0">
                                 {m.isActive === false ? 'Inactive' : 'Active'}
                               </Badge>
@@ -990,7 +1122,7 @@ export function AdminShippingZonePage() {
                   <div className="rounded-md border p-4 space-y-4">
                     <div>
                       <div className="font-medium">Edit method</div>
-                      <div className="text-xs text-muted-foreground">ID: {editingMethodId}</div>
+                      <div className="text-xs text-muted-foreground">{methodDraft.displayName || methodDraft.code || 'Shipping method'}</div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
@@ -1074,32 +1206,61 @@ export function AdminShippingZonePage() {
                 <CardDescription>Define how a method calculates shipping cost.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Method</Label>
-                  <Select value={selectedMethodId} onValueChange={setSelectedMethodId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={isLoadingMethods ? 'Loading…' : 'Select a method'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {derivedMethodOptions.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  Step 1: choose a method. Step 2: add one or more rates. Higher priority wins; ties choose the cheapest.
                 </div>
-                <div className="space-y-2">
-                  <Label>Selected</Label>
-                  <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">{selectedMethodLabel || '—'}</div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Method</Label>
+                    <Select value={selectedMethodId} onValueChange={setSelectedMethodId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {derivedMethodOptions.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium">{m.label}</span>
+                              {m.meta ? <span className="text-xs text-muted-foreground">{m.meta}</span> : null}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Selected</Label>
+                    <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                      {selectedMethodLabel || '—'}
+                      {selectedMethod?.provider ? (
+                        <div className="text-xs text-muted-foreground">Provider: {selectedMethod.provider}</div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-              </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-md border bg-card p-3">
+                    <div className="text-xs text-muted-foreground">Total rates</div>
+                    <div className="text-lg font-semibold">{rates.length}</div>
+                  </div>
+                  <div className="rounded-md border bg-card p-3">
+                    <div className="text-xs text-muted-foreground">Active rates</div>
+                    <div className="text-lg font-semibold">
+                      {rates.filter((r) => r.isActive !== false).length}
+                    </div>
+                  </div>
+                  <div className="rounded-md border bg-card p-3">
+                    <div className="text-xs text-muted-foreground">Priority rules</div>
+                    <div className="text-sm">Lowest number wins. Cheapest breaks ties.</div>
+                  </div>
+                </div>
 
               <Separator />
 
               {rates.length === 0 ? (
-                <div className="text-sm text-muted-foreground">{isLoadingRates ? 'Loading rates…' : 'No rates yet for this method.'}</div>
+                <div className="text-sm text-muted-foreground">No rates yet for this method.</div>
               ) : (
                 <div className="space-y-2">
                   {rates
@@ -1115,24 +1276,54 @@ export function AdminShippingZonePage() {
                       return (
                         <div
                           key={r.id}
-                          className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-start sm:justify-between"
+                          className="grid gap-4 rounded-md border p-4 sm:grid-cols-[1.2fr_1fr_auto]"
                         >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div className="font-medium truncate">{r.name || r.id}</div>
+                          <div className="min-w-0 space-y-2">
+                            <div className="flex items-center flex-wrap gap-2">
+                              <div className="font-medium truncate">
+                                {r.name ||
+                                  (r.calculationType
+                                    ? `${r.calculationType.replace('_', ' ')} rate`
+                                    : 'Shipping rate')}
+                              </div>
                               <Badge variant={r.isActive === false ? 'secondary' : 'default'} className="shrink-0">
                                 {r.isActive === false ? 'Inactive' : 'Active'}
                               </Badge>
                               {typeof r.priority === 'number' && <Badge variant="secondary">P{r.priority}</Badge>}
+                              <Badge variant="outline">{rateDetailLabel(r)}</Badge>
                               {isEditing ? <Badge variant="secondary">Editing</Badge> : null}
                             </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {r.calculationType || 'rate'}
-                              {typeof r.amount === 'number' ? ` • ${r.currency || 'KES'} ${r.amount}` : ''}
-                              {r.formula ? ` • ${r.formula}` : ''}
+                            <div className="text-xs text-muted-foreground">
+                              {formatRateSummary(r) || 'No details set.'}
                             </div>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                            {r.calculationType === 'table_rate' && Array.isArray(r.table?.tiers) ? (
+                              <div className="space-y-1">
+                                <div className="font-medium text-foreground">Tier preview</div>
+                                {r.table.tiers.slice(0, 3).map((tier: any, idx: number) => (
+                                  <div key={`${r.id}-tier-${idx}`} className="flex items-center justify-between gap-2">
+                                    <span>≤ {tier?.upto ?? '—'}</span>
+                                    <span>{r.currency || 'KES'} {tier?.price ?? 0}</span>
+                                  </div>
+                                ))}
+                                {r.table.tiers.length > 3 ? (
+                                  <div>+{r.table.tiers.length - 3} more tiers</div>
+                                ) : null}
+                              </div>
+                            ) : r.calculationType === 'formula' ? (
+                              <div className="space-y-1">
+                                <div className="font-medium text-foreground">Formula</div>
+                                <div className="truncate">{r.formula || 'No formula set'}</div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <div className="font-medium text-foreground">Rate value</div>
+                                <div>{formatRateSummary(r) || '—'}</div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 justify-end">
                             <Button
                               variant="outline"
                               size="sm"
@@ -1162,7 +1353,16 @@ export function AdminShippingZonePage() {
                 <div className="rounded-md border p-4 space-y-4">
                   <div>
                     <div className="font-medium">Edit rate</div>
-                    <div className="text-xs text-muted-foreground">ID: {editingRateId}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {rateDraft.name ||
+                        (rateDraft.calculationType
+                          ? `${rateDraft.calculationType.replace('_', ' ')} rate`
+                          : 'Shipping rate')}
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                    Tips: use flat for fixed fees, per weight/item for scalable pricing, and table rates for tiers. Keep priority low for preferred rates.
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
@@ -1214,7 +1414,7 @@ export function AdminShippingZonePage() {
 
                     {(rateDraft.calculationType === 'flat' || rateDraft.calculationType === 'per_weight' || rateDraft.calculationType === 'per_item') && (
                       <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="rateEditAmount">Amount</Label>
+                        <Label htmlFor="rateEditAmount">{rateDraft.calculationType === 'flat' ? 'Amount' : 'Price per unit'}</Label>
                         <Input
                           id="rateEditAmount"
                           type="number"
@@ -1225,26 +1425,122 @@ export function AdminShippingZonePage() {
                     )}
 
                     {rateDraft.calculationType === 'formula' && (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="rateEditFormula">Formula</Label>
-                        <Textarea
-                          id="rateEditFormula"
-                          value={rateDraft.formula}
-                          onChange={(e) => setRateDraft((d) => (d ? { ...d, formula: e.target.value } : d))}
-                          placeholder="e.g. subtotal * 0.05 + 200"
-                        />
+                      <div className="space-y-3 md:col-span-2">
+                        <Label>Formula builder</Label>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="rateEditFormulaBase">Base</Label>
+                            <Select
+                              value={rateDraft.formulaBase}
+                              onValueChange={(v) => setRateDraft((d) => (d ? { ...d, formulaBase: v } : d))}
+                            >
+                              <SelectTrigger id="rateEditFormulaBase">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="subtotal">Subtotal</SelectItem>
+                                <SelectItem value="totalWeight">Total weight</SelectItem>
+                                <SelectItem value="itemCount">Item count</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="rateEditFormulaMultiplier">Multiplier</Label>
+                            <Input
+                              id="rateEditFormulaMultiplier"
+                              type="number"
+                              value={rateDraft.formulaMultiplier}
+                              onChange={(e) => setRateDraft((d) => (d ? { ...d, formulaMultiplier: e.target.value } : d))}
+                              placeholder="e.g. 0.05"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="rateEditFormulaSurcharge">Surcharge</Label>
+                            <Input
+                              id="rateEditFormulaSurcharge"
+                              type="number"
+                              value={rateDraft.formulaSurcharge}
+                              onChange={(e) => setRateDraft((d) => (d ? { ...d, formulaSurcharge: e.target.value } : d))}
+                              placeholder="e.g. 200"
+                            />
+                          </div>
+                        </div>
+                        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                          Preview: {rateDraft.formulaCustom.trim() ? rateDraft.formulaCustom : buildFormulaExpression(rateDraft.formulaBase, rateDraft.formulaMultiplier, rateDraft.formulaSurcharge)}
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="rateEditFormulaCustom">Custom expression (optional)</Label>
+                          <Input
+                            id="rateEditFormulaCustom"
+                            value={rateDraft.formulaCustom}
+                            onChange={(e) => setRateDraft((d) => (d ? { ...d, formulaCustom: e.target.value } : d))}
+                            placeholder="subtotal * 0.05 + 200"
+                          />
+                        </div>
                       </div>
                     )}
 
                     {rateDraft.calculationType === 'table_rate' && (
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="rateEditTable">Table JSON</Label>
-                        <Textarea
-                          id="rateEditTable"
-                          value={rateDraft.tableJson}
-                          onChange={(e) => setRateDraft((d) => (d ? { ...d, tableJson: e.target.value } : d))}
-                          placeholder='e.g. [{"min":0,"max":5,"amount":300}]'
-                        />
+                      <div className="space-y-3 md:col-span-2">
+                        <Label>Table rate tiers</Label>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="rateEditTableMeasure">Measure</Label>
+                            <Select
+                              value={rateDraft.tableMeasure}
+                              onValueChange={(v) => setRateDraft((d) => (d ? { ...d, tableMeasure: v } : d))}
+                            >
+                              <SelectTrigger id="rateEditTableMeasure">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="subtotal">Subtotal</SelectItem>
+                                <SelectItem value="weight">Total weight</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {rateDraft.tableTiers.map((tier, idx) => (
+                            <div key={`tier-${idx}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                              <Input
+                                type="number"
+                                value={tier.upto}
+                                placeholder="Max value"
+                                onChange={(e) => {
+                                  const next = rateDraft.tableTiers.map((t, i) => (i === idx ? { ...t, upto: e.target.value } : t))
+                                  setRateDraft((d) => (d ? { ...d, tableTiers: next } : d))
+                                }}
+                              />
+                              <Input
+                                type="number"
+                                value={tier.price}
+                                placeholder="Price"
+                                onChange={(e) => {
+                                  const next = rateDraft.tableTiers.map((t, i) => (i === idx ? { ...t, price: e.target.value } : t))
+                                  setRateDraft((d) => (d ? { ...d, tableTiers: next } : d))
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  const next = rateDraft.tableTiers.filter((_, i) => i !== idx)
+                                  setRateDraft((d) => (d ? { ...d, tableTiers: next.length ? next : [{ upto: '', price: '' }] } : d))
+                                }}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setRateDraft((d) => (d ? { ...d, tableTiers: [...d.tableTiers, { upto: '', price: '' }] } : d))}
+                          >
+                            Add tier
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1281,6 +1577,10 @@ export function AdminShippingZonePage() {
                   <div className="font-medium">Add rate</div>
                 </div>
 
+                <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  Create multiple rates for the same method to cover different order sizes or weight brackets.
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="rateName">Rate name (optional)</Label>
@@ -1313,32 +1613,112 @@ export function AdminShippingZonePage() {
 
                   {(rateType === 'flat' || rateType === 'per_weight' || rateType === 'per_item') && (
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="rateAmount">Amount</Label>
-                      <Input id="rateAmount" type="number" value={rateAmount} onChange={(e) => setRateAmount(e.target.value)} placeholder="e.g. 500" />
+                      <Label htmlFor="rateAmount">{rateType === 'flat' ? 'Amount' : 'Price per unit'}</Label>
+                      <Input id="rateAmount" type="number" value={rateAmount} onChange={(e) => setRateAmount(e.target.value)} placeholder={rateType === 'flat' ? 'e.g. 500' : 'e.g. 50'} />
                     </div>
                   )}
 
                   {rateType === 'formula' && (
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="rateFormula">Formula</Label>
-                      <Input
-                        id="rateFormula"
-                        value={rateFormula}
-                        onChange={(e) => setRateFormula(e.target.value)}
-                        placeholder="e.g. subtotal * 0.05 + 200"
-                      />
+                    <div className="space-y-3 md:col-span-2">
+                      <Label>Formula builder</Label>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="rateFormulaBase">Base</Label>
+                          <Select value={rateFormulaBase} onValueChange={setRateFormulaBase}>
+                            <SelectTrigger id="rateFormulaBase">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="subtotal">Subtotal</SelectItem>
+                              <SelectItem value="totalWeight">Total weight</SelectItem>
+                              <SelectItem value="itemCount">Item count</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="rateFormulaMultiplier">Multiplier</Label>
+                          <Input
+                            id="rateFormulaMultiplier"
+                            type="number"
+                            value={rateFormulaMultiplier}
+                            onChange={(e) => setRateFormulaMultiplier(e.target.value)}
+                            placeholder="e.g. 0.05"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="rateFormulaSurcharge">Surcharge</Label>
+                          <Input
+                            id="rateFormulaSurcharge"
+                            type="number"
+                            value={rateFormulaSurcharge}
+                            onChange={(e) => setRateFormulaSurcharge(e.target.value)}
+                            placeholder="e.g. 200"
+                          />
+                        </div>
+                      </div>
+                      <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                        Preview: {rateFormula.trim() ? rateFormula.trim() : buildFormulaExpression(rateFormulaBase, rateFormulaMultiplier, rateFormulaSurcharge)}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="rateFormula">Custom expression (optional)</Label>
+                        <Input
+                          id="rateFormula"
+                          value={rateFormula}
+                          onChange={(e) => setRateFormula(e.target.value)}
+                          placeholder="subtotal * 0.05 + 200"
+                        />
+                      </div>
                     </div>
                   )}
 
                   {rateType === 'table_rate' && (
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="rateTable">Table JSON</Label>
-                      <Textarea
-                        id="rateTable"
-                        value={rateTableJson}
-                        onChange={(e) => setRateTableJson(e.target.value)}
-                        placeholder='e.g. [{"min":0,"max":5,"amount":300}]'
-                      />
+                    <div className="space-y-3 md:col-span-2">
+                      <Label>Table rate tiers</Label>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="rateTableMeasure">Measure</Label>
+                          <Select value={rateTableMeasure} onValueChange={setRateTableMeasure}>
+                            <SelectTrigger id="rateTableMeasure">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="subtotal">Subtotal</SelectItem>
+                              <SelectItem value="weight">Total weight</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        {rateTableTiers.map((tier, idx) => (
+                          <div key={`new-tier-${idx}`} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                            <Input
+                              type="number"
+                              value={tier.upto}
+                              placeholder="Max value"
+                              onChange={(e) => setRateTableTiers((prev) => prev.map((t, i) => (i === idx ? { ...t, upto: e.target.value } : t)))}
+                            />
+                            <Input
+                              type="number"
+                              value={tier.price}
+                              placeholder="Price"
+                              onChange={(e) => setRateTableTiers((prev) => prev.map((t, i) => (i === idx ? { ...t, price: e.target.value } : t)))}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setRateTableTiers((prev) => {
+                                const next = prev.filter((_, i) => i !== idx)
+                                return next.length ? next : [{ upto: '', price: '' }]
+                              })}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                        <Button type="button" variant="outline" onClick={() => setRateTableTiers((prev) => [...prev, { upto: '', price: '' }])}>
+                          Add tier
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1408,7 +1788,12 @@ export function AdminShippingZonePage() {
                 <div className="space-y-2">
                   {previewQuotes.map((q, index) => {
                     const key = toQuoteKey(q, index)
-                    const label = q.name || q.label || q.methodId || q.id || `Option ${index + 1}`
+                    const label =
+                      q.name ||
+                      q.label ||
+                      (q.methodId ? methodLabelById.get(q.methodId) : undefined) ||
+                      q.id ||
+                      `Option ${index + 1}`
                     const amount = typeof q.amount === 'number' ? q.amount : typeof q.price === 'number' ? q.price : null
                     return (
                       <div key={key} className={cn('flex items-start justify-between gap-3 rounded-md border p-3')}> 

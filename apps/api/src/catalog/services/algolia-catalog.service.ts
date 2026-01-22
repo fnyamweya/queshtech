@@ -342,8 +342,16 @@ export class AlgoliaCatalogService {
       })
       .filter(Boolean) as string[];
 
-    const defaultSku = skus.find((s) => Boolean((s as any).isDefault)) ?? skus[0];
-    const imageUrl = (defaultSku?.imagesJson ?? []).find(Boolean) ?? undefined;
+    const images = (product.productImages ?? []) as Array<{ url?: string; isPrimary?: boolean; sortOrder?: number }>;
+    const imageUrl = images
+      .slice()
+      .sort((a, b) => {
+        const primaryScore = (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0);
+        if (primaryScore !== 0) return primaryScore;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      })
+      .map((img) => img.url)
+      .find(Boolean);
 
     return {
       objectID: product.id,
@@ -418,6 +426,7 @@ export class AlgoliaCatalogService {
       relations: [
         'brand',
         'skus',
+        'productImages',
         'productCategories',
         'productCategories.category',
         'productCategories.category.translations',
@@ -465,6 +474,7 @@ export class AlgoliaCatalogService {
         relations: [
           'brand',
           'skus',
+          'productImages',
           'productCategories',
           'productCategories.category',
           'productCategories.category.translations',

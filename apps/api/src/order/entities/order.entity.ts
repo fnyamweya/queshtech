@@ -15,6 +15,8 @@ import { OrderLevelCharge } from './order-level-charge.entity';
 
 export enum OrderStatus {
   PENDING = 'pending',
+  AWAITING_SHIPPING_QUOTE = 'awaiting_shipping_quote',
+  READY_FOR_PAYMENT = 'ready_for_payment',
   CONFIRMED = 'confirmed',
   CANCELLED = 'cancelled',
   COMPLETED = 'completed',
@@ -183,6 +185,18 @@ export class Order {
 
   @Column({ name: 'item_count', type: 'int', default: 0 })
   itemCount: number;
+
+  @Column({ name: 'shipping_name', type: 'text', nullable: true })
+  shippingName?: string;
+
+  @Column({ name: 'shipping_phone', type: 'text', nullable: true })
+  shippingPhone?: string;
+
+  @Column({ name: 'shipping_address_summary', type: 'text', nullable: true })
+  shippingAddressSummary?: string;
+
+  @Column({ name: 'shipping_quote_pending', type: 'boolean', default: false })
+  shippingQuotePending: boolean;
 
   @Column({ name: 'notes_customer', type: 'text', nullable: true })
   notesCustomer?: string;

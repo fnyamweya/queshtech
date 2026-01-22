@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLocation } from 'wouter'
 import { AuthShell } from '@/components/auth/auth-shell'
-import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { AuthNotice } from '@/components/auth/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -210,17 +210,8 @@ export function SignupPage() {
         </AuthNotice>
 
         <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
-          {isLoading ? (
-            <>
-              <AuthSpinner />
-              Creating account…
-            </>
-          ) : (
-            <>
-              Create account
-              <ArrowRight size={16} weight="bold" />
-            </>
-          )}
+          Create account
+          <ArrowRight size={16} weight="bold" />
         </Button>
 
         <div className="relative py-1">
@@ -237,7 +228,6 @@ export function SignupPage() {
           onClick={handleGoogleLogin}
           disabled={isLoading}
         >
-          {isLoading ? <AuthSpinner /> : null}
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="#4285F4"

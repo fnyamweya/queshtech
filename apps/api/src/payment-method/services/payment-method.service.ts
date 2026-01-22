@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, ILike, In, Repository } from 'typeorm';
-import { PaymentMethod } from '../entities/payment-method.entity';
+import { PaymentMethod, PaymentMethodStatus } from '../entities/payment-method.entity';
 import { CreatePaymentMethodDto } from '../dto/create-payment-method.dto';
 import { UpdatePaymentMethodDto } from '../dto/update-payment-method.dto';
 import { ListPaymentMethodsDto } from '../dto/list-payment-methods.dto';
@@ -231,6 +231,9 @@ export class PaymentMethodService {
     if (typeof params.isActive === 'boolean') {
       qb.andWhere('pm.is_active = :isActive', { isActive: params.isActive });
     }
+    if (params.status) {
+      qb.andWhere('pm.status = :status', { status: params.status });
+    }
     if (params.providerId) {
       qb.andWhere('pm.provider_id = :providerId', {
         providerId: params.providerId,
@@ -359,12 +362,18 @@ export class PaymentMethodService {
     await this.validateCountryCodesBestEffort(countryCodes);
     await this.validateCurrencyCodes(currencyCodes);
 
+    const status =
+      (payload.status ?? PaymentMethodStatus.ACTIVE) as PaymentMethodStatus;
     const entity = this.methodRepo.create({
       code,
       providerId: payload.providerId,
       name: payload.name,
       description: payload.description,
-      isActive: payload.isActive ?? true,
+      status,
+      isActive:
+        typeof payload.isActive === 'boolean'
+          ? payload.isActive
+          : status === PaymentMethodStatus.ACTIVE,
       configJson: payload.configJson ?? {},
       metadata: payload.metadata ?? {},
     });
@@ -398,6 +407,12 @@ export class PaymentMethodService {
     if (typeof payload.name !== 'undefined') existing.name = payload.name;
     if (typeof payload.description !== 'undefined')
       existing.description = payload.description;
+    if (typeof payload.status !== 'undefined') {
+      existing.status = payload.status as PaymentMethodStatus;
+      if (typeof payload.isActive === 'undefined') {
+        existing.isActive = payload.status === PaymentMethodStatus.ACTIVE;
+      }
+    }
     if (typeof payload.isActive !== 'undefined')
       existing.isActive = payload.isActive;
     if (typeof payload.countryCodes !== 'undefined') {

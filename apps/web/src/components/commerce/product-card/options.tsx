@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { ProductCardContext, ProductCardOptionGroup, ProductCardOptionValue } from './types'
@@ -20,7 +19,7 @@ export function ProductCardOptions<TProduct>({ ctx, className }: { ctx: ProductC
   const firstGroup = ctx.optionGroups[0]
   const selection = ctx.selectedOptions[firstGroup.id] || ''
 
-  const values = useMemo(() => firstGroup.values.slice(0, maxVisible), [firstGroup.values, maxVisible])
+  const values = firstGroup.values.slice(0, maxVisible)
 
   const select = (value: ProductCardOptionValue) => {
     const next = { ...ctx.selectedOptions, [firstGroup.id]: value.value }
@@ -84,4 +83,3 @@ export function ProductCardOptions<TProduct>({ ctx, className }: { ctx: ProductC
     </div>
   )
 }
-

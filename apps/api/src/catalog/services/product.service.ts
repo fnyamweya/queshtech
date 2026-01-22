@@ -21,6 +21,7 @@ import { ProductSku } from '../entities/product-sku.entity';
 import { ProductCategory } from '../entities/product-category.entity';
 import { ProductChannel } from '../entities/product-channel.entity';
 import { ProductContextOverride } from '../entities/product-context-override.entity';
+import { ProductImage } from '../entities/product-image.entity';
 import { PriceList } from '../entities/price-list.entity';
 import { Currency } from '../entities/currency.entity';
 import { ProductSkuPricing } from '../entities/product-sku-pricing.entity';
@@ -48,6 +49,7 @@ import { PriceResolveCacheIndexService } from 'src/common/cache/price-resolve-ca
 import { ProductAvailabilityDto } from '../dto/product-availability.dto';
 import { CreateProductSkuDto } from '../dto/create-product-sku.dto';
 import { CreateProductPriceDto } from '../dto/create-product-price.dto';
+import { CreateProductImageDto, ProductImageDto } from '../dto/product-image.dto';
 import { CreateProductContextOverrideDto } from '../dto/product-v2/create-product-context-override.dto';
 import { UpdateProductContextOverrideDto } from '../dto/product-v2/update-product-context-override.dto';
 import { ProductDTO, ProductViewDTO } from '../dto/product-v2/product.dto';
@@ -101,6 +103,8 @@ export class ProductService {
     private readonly productChannelRepository: Repository<ProductChannel>,
     @InjectRepository(ProductContextOverride)
     private readonly productContextOverrideRepository: Repository<ProductContextOverride>,
+    @InjectRepository(ProductImage)
+    private readonly productImageRepository: Repository<ProductImage>,
     @InjectRepository(ProductSkuPricing)
     private readonly skuPricingRepository: Repository<ProductSkuPricing>,
     @InjectRepository(PriceList)
@@ -127,6 +131,28 @@ export class ProductService {
     return this.currencyService.assertExists(currencyCode);
   }
 
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
+  private buildPublicProductWhere(idOrSlug: string) {
+    return this.isUuid(idOrSlug)
+      ? { id: idOrSlug, status: ProductStatus.ACTIVE }
+      : { slug: idOrSlug, status: ProductStatus.ACTIVE };
+  }
+
+  async resolvePublicProductId(idOrSlug: string): Promise<string> {
+    const product = await this.productRepository.findOne({
+      where: this.buildPublicProductWhere(idOrSlug),
+      select: ['id'],
+    });
+
+    if (!product) throw new NotFoundException('Product not found');
+    return product.id;
+  }
+
   private getRepos(manager?: EntityManager) {
     if (!manager) {
       return {
@@ -136,6 +162,7 @@ export class ProductService {
         productCategoryRepository: this.productCategoryRepository,
         productChannelRepository: this.productChannelRepository,
         productContextOverrideRepository: this.productContextOverrideRepository,
+        productImageRepository: this.productImageRepository,
         skuPricingRepository: this.skuPricingRepository,
         priceListRepository: this.priceListRepository,
         currencyRepository: this.currencyRepository,
@@ -153,6 +180,7 @@ export class ProductService {
       productContextOverrideRepository: manager.getRepository(
         ProductContextOverride,
       ),
+      productImageRepository: manager.getRepository(ProductImage),
       skuPricingRepository: manager.getRepository(ProductSkuPricing),
       priceListRepository: manager.getRepository(PriceList),
       currencyRepository: manager.getRepository(Currency),
@@ -201,6 +229,7 @@ export class ProductService {
       const product = productRepository.create({
         title: payload.title,
         description: payload.description,
+        shortDescription: payload.shortDescription,
         seoTitle: payload.seoTitle,
         seoDescription: payload.seoDescription,
         status: payload.status ?? ProductStatus.DRAFT,
@@ -221,6 +250,8 @@ export class ProductService {
         payload.optionDefinitions ?? [],
         manager,
       );
+
+      await this.persistProductImages(saved.id, payload.images, manager);
 
       const inputsWithIds = (inputs ?? []).map((input, index) => {
         const sku = skus?.[index];
@@ -327,6 +358,7 @@ export class ProductService {
           relations: [
             'brand',
             'skus',
+            'productImages',
             'productCategories',
             'productCategories.category',
             'productChannels',
@@ -360,6 +392,7 @@ export class ProductService {
     Object.assign(product, {
       title: payload.title ?? product.title,
       description: payload.description ?? product.description,
+      shortDescription: payload.shortDescription ?? product.shortDescription,
       seoTitle: payload.seoTitle ?? product.seoTitle,
       seoDescription: payload.seoDescription ?? product.seoDescription,
       status: payload.status ?? product.status,
@@ -439,6 +472,10 @@ export class ProductService {
       if (payload.categoryIds.length) {
         await this.attachCategories(saved.id, payload.categoryIds);
       }
+    }
+
+    if (payload.images !== undefined) {
+      await this.persistProductImages(saved.id, payload.images);
     }
 
 
@@ -551,6 +588,7 @@ export class ProductService {
           .createQueryBuilder('product')
           .leftJoinAndSelect('product.brand', 'brand')
           .leftJoinAndSelect('product.skus', 'skus')
+          .leftJoinAndSelect('product.productImages', 'productImages')
           .leftJoinAndSelect('product.productCategories', 'productCategories')
           .leftJoinAndSelect('productCategories.category', 'category')
           .where('product.status = :status', { status: ProductStatus.ACTIVE });
@@ -634,11 +672,12 @@ export class ProductService {
     id: string,
     opts?: { locale?: string; priceListId?: string; currencyCode?: string },
   ): Promise<PublicProductDto> {
+    const resolvedId = this.isUuid(id) ? id : await this.resolvePublicProductId(id);
     const currencyCode = await this.normalizeAndValidateCurrencyCode(
       opts?.currencyCode,
     );
     const rawKey = cacheKeyFromParts('public', 'catalog', 'products', 'one', {
-      id,
+      id: resolvedId,
       locale: opts?.locale,
       priceListId: opts?.priceListId,
       currencyCode,
@@ -649,10 +688,11 @@ export class ProductService {
       key,
       () =>
         this.productRepository.findOne({
-          where: { id, status: ProductStatus.ACTIVE },
+          where: { id: resolvedId, status: ProductStatus.ACTIVE },
           relations: [
             'brand',
             'skus',
+            'productImages',
             'productCategories',
             'productCategories.category',
             'productChannels',
@@ -714,6 +754,7 @@ export class ProductService {
           .createQueryBuilder('product')
           .leftJoinAndSelect('product.brand', 'brand')
           .leftJoinAndSelect('product.skus', 'skus')
+          .leftJoinAndSelect('product.productImages', 'productImages')
           .leftJoinAndSelect('product.productCategories', 'productCategories')
           .leftJoinAndSelect('productCategories.category', 'category')
           .where('product.status = :status', { status: ProductStatus.ACTIVE });
@@ -806,6 +847,7 @@ export class ProductService {
       context?: ProductViewContext;
     },
   ): Promise<ProductViewDTO> {
+    const resolvedId = this.isUuid(id) ? id : await this.resolvePublicProductId(id);
     const rawKey = cacheKeyFromParts(
       'public',
       'catalog',
@@ -813,7 +855,7 @@ export class ProductService {
       'view',
       'one',
       {
-        id,
+        id: resolvedId,
         locale: opts?.locale,
         priceListId: opts?.priceListId,
         currencyCode: opts?.currencyCode,
@@ -826,10 +868,11 @@ export class ProductService {
       key,
       async () => {
         const product = await this.productRepository.findOne({
-          where: { id, status: ProductStatus.ACTIVE },
+          where: { id: resolvedId, status: ProductStatus.ACTIVE },
           relations: [
             'brand',
             'skus',
+            'productImages',
             'productCategories',
             'productCategories.category',
             'productChannels',
@@ -1115,6 +1158,10 @@ export class ProductService {
   }> {
     const { skuRepository } = this.getRepos(manager);
 
+    if (!skus?.length) {
+      throw new BadRequestException('At least one SKU is required');
+    }
+
     const existingSkus = await skuRepository.find({ where: { productId } });
     const existingById = new Map(existingSkus.map((s) => [s.id, s] as const));
     const existingByCode = new Map(
@@ -1123,9 +1170,20 @@ export class ProductService {
         .map((s) => [String(s.sku), s] as const),
     );
 
-    const normalized: CreateProductSkuDto[] = skus?.length
-      ? skus
-      : ([{ title: productTitle, isDefault: true }] as any);
+    const normalized: CreateProductSkuDto[] = skus;
+
+    const defaultCount = normalized.filter((s) => s?.isDefault).length;
+    if (defaultCount > 1) {
+      throw new BadRequestException('Only one SKU can be the default');
+    }
+
+    if (mode === 'replace') {
+      if (normalized.length === 1) {
+        normalized[0] = { ...normalized[0], isDefault: true } as any;
+      } else if (defaultCount === 0 && normalized.length > 1) {
+        normalized[0] = { ...normalized[0], isDefault: true } as any;
+      }
+    }
 
     const defs = (optionDefinitions ?? []).filter(
       (d) => d && typeof d.key === 'string' && d.key.trim().length > 0,
@@ -1227,11 +1285,6 @@ export class ProductService {
         ? this.normalizeAvailability((input as any).availability)
         : ((existing as any)?.availability ?? this.normalizeAvailability(undefined));
 
-      const imagesProvided = (input as any).images !== undefined;
-      const imagesJson = imagesProvided
-        ? this.normalizeImages((input as any).images)
-        : ((existing as any)?.imagesJson ?? []);
-
       const inventoryProvided = (input as any).inventory !== undefined;
       const inventory = inventoryProvided
         ? ((input as any).inventory ?? {})
@@ -1260,7 +1313,6 @@ export class ProductService {
         position,
         options: options as any,
         attributes: options as any,
-        imagesJson,
         availability: availability as any,
         inventory: inventory as any,
         requiresShipping:
@@ -1347,14 +1399,21 @@ export class ProductService {
     channels: string[];
   }> {
     const { skuRepository } = this.getRepos(manager);
-    const normalized: CreateProductSkuDto[] = skus?.length
-      ? skus
-      : [
-          {
-            title: productTitle,
-            isDefault: true,
-          },
-        ];
+    if (!skus?.length) {
+      throw new BadRequestException('At least one SKU is required');
+    }
+
+    const normalized: CreateProductSkuDto[] = skus;
+
+    const defaultCount = normalized.filter((s) => s?.isDefault).length;
+    if (defaultCount > 1) {
+      throw new BadRequestException('Only one SKU can be the default');
+    }
+    if (normalized.length === 1) {
+      normalized[0] = { ...normalized[0], isDefault: true } as any;
+    } else if (defaultCount === 0 && normalized.length > 1) {
+      normalized[0] = { ...normalized[0], isDefault: true } as any;
+    }
 
     const defs = (optionDefinitions ?? []).filter(
       (d) => d && typeof d.key === 'string' && d.key.trim().length > 0,
@@ -1442,7 +1501,6 @@ export class ProductService {
           position,
           options: options as any,
           attributes: options as any,
-          imagesJson: this.normalizeImages(v.images),
           availability: availability as any,
           inventory: (v.inventory ?? {}) as any,
           requiresShipping: v.requiresShipping ?? true,
@@ -1683,8 +1741,92 @@ export class ProductService {
     };
   }
 
-  private normalizeImages(images?: string[]): string[] {
-    return (images ?? []).map((i) => String(i ?? '').trim()).filter(Boolean);
+  private normalizeProductImages(
+    images?: CreateProductImageDto[],
+  ): Array<{
+    url: string;
+    alt?: string;
+    skuId?: string | null;
+    isPrimary: boolean;
+    sortOrder: number;
+  }> {
+    if (!Array.isArray(images)) return [];
+
+    const normalized = images
+      .map((img, index) => {
+        const url = String(img?.url ?? '').trim();
+        if (!url) return null;
+        const alt = img?.alt ? String(img.alt).trim() : undefined;
+        const skuId = img?.skuId ? String(img.skuId).trim() : undefined;
+        const sortOrderRaw = img?.sortOrder;
+        const sortOrder = Number.isFinite(sortOrderRaw as number)
+          ? Number(sortOrderRaw)
+          : index;
+        return {
+          url,
+          alt,
+          skuId: skuId || undefined,
+          isPrimary: Boolean(img?.isPrimary),
+          sortOrder,
+        };
+      })
+      .filter(Boolean) as Array<{
+      url: string;
+      alt?: string;
+      skuId?: string | null;
+      isPrimary: boolean;
+      sortOrder: number;
+    }>;
+
+    if (!normalized.length) return [];
+
+    const hasPrimary = normalized.some((img) => img.isPrimary);
+    if (!hasPrimary) normalized[0].isPrimary = true;
+
+    let primarySet = false;
+    for (const img of normalized) {
+      if (!img.isPrimary) continue;
+      if (primarySet) img.isPrimary = false;
+      else primarySet = true;
+    }
+
+    return normalized;
+  }
+
+  private async persistProductImages(
+    productId: string,
+    images: CreateProductImageDto[] | undefined,
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (images === undefined) return;
+    const { productImageRepository } = this.getRepos(manager);
+
+    await productImageRepository.delete({ productId } as any);
+    const normalized = this.normalizeProductImages(images);
+    if (!normalized.length) return;
+
+    const entities = normalized.map((img) =>
+      productImageRepository.create({
+        productId,
+        url: img.url,
+        alt: img.alt,
+        skuId: img.skuId,
+        isPrimary: img.isPrimary,
+        sortOrder: img.sortOrder,
+      }),
+    );
+    await productImageRepository.save(entities);
+  }
+
+  private toProductImageDto(image: ProductImage): ProductImageDto {
+    return {
+      id: image.id,
+      url: image.url,
+      alt: image.alt ?? undefined,
+      skuId: image.skuId ?? undefined,
+      isPrimary: image.isPrimary ?? false,
+      sortOrder: image.sortOrder ?? 0,
+    };
   }
 
   private async generateUniqueProductSlug(
@@ -1947,6 +2089,9 @@ export class ProductService {
     const description = product.description
       ? ({ en: product.description } as LocalizedString)
       : undefined;
+    const shortDescription = product.shortDescription
+      ? ({ en: product.shortDescription } as LocalizedString)
+      : undefined;
 
     const categories = (product.productCategories ?? [])
       .map((pc) => pc.category)
@@ -1980,12 +2125,33 @@ export class ProductService {
     const defaultSku =
       (product.skus ?? []).find((s) => s.isDefault) ?? (product.skus ?? [])[0];
 
-    const skus = (product.skus ?? []).map((s) => ({
-      id: s.id,
-      code: s.sku ?? s.id,
-      name: { en: s.title ?? product.title },
-      attributes: (s.attributes ?? {}) as any,
-    }));
+    const skus = await Promise.all(
+      (product.skus ?? []).map(async (s) => {
+        const price = await this.resolvePriceForSku(product.id, s, opts);
+        return {
+          id: s.id,
+          code: s.sku ?? s.id,
+          name: { en: s.title ?? product.title },
+          attributes: (s.attributes ?? {}) as any,
+          options: (s.options ?? {}) as Record<string, string>,
+          availability: (s.availability ?? {}) as Record<string, unknown>,
+          isDefault: s.isDefault ?? false,
+          prices: price ? [price] : [],
+        };
+      }),
+    );
+
+    const defaultSkuPrice = defaultSku
+      ? skus.find((s) => s.id === defaultSku.id)?.prices?.[0]
+      : undefined;
+
+    const images = (product.productImages ?? [])
+      .map((img) => this.toProductImageDto(img))
+      .sort((a, b) => {
+        const primaryScore = (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0);
+        if (primaryScore !== 0) return primaryScore;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
 
     return {
       id: product.id,
@@ -2007,10 +2173,14 @@ export class ProductService {
         : undefined,
       name,
       description,
+      shortDescription,
+      optionDefinitions: (product.optionDefinitionsJson ?? []) as any,
       attributes: attributes as any,
       attributeSchemaRef,
       status: product.status,
       skus,
+      prices: defaultSkuPrice ? [defaultSkuPrice] : [],
+      images,
     };
   }
 
@@ -2052,6 +2222,7 @@ export class ProductService {
   ): Promise<PublicProductDto> {
     const title = product.title;
     const description = product.description;
+    const shortDescription = product.shortDescription;
 
     const categories = (product.productCategories ?? [])
       .map((pc) => pc.category)
@@ -2068,18 +2239,26 @@ export class ProductService {
               sku: s.sku,
               attributes: s.attributes,
               availability: s.availability ?? {},
-              images: s.imagesJson,
               price,
             } as PublicProductSkuDto;
           }),
         )
       : [];
 
+    const images = (product.productImages ?? [])
+      .map((img) => this.toProductImageDto(img))
+      .sort((a, b) => {
+        const primaryScore = (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0);
+        if (primaryScore !== 0) return primaryScore;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+
     return {
       id: product.id,
       slug: product.slug,
       title,
       description,
+      shortDescription,
       seoTitle: product.seoTitle,
       seoDescription: product.seoDescription,
       status: product.status,
@@ -2095,6 +2274,7 @@ export class ProductService {
           }
         : undefined,
       skus,
+      images,
       categories,
     };
   }

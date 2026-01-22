@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Get,
   Logger,
+  Param,
   Post,
   Req,
   UseGuards,
@@ -15,11 +17,14 @@ import { PermissionsGuard } from 'src/auth/guards/permissions.guard';
 import { RequirePermissions } from 'src/auth/decorators/permissions.decorator';
 import { PermissionModule } from 'src/auth/entities/permission.entity';
 import { ResponseUtil } from 'src/common/utils/response.util';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from 'src/auth/interfaces/user.interface';
 import { MpesaService } from '../services/mpesa.service';
 import { C2BRegisterUrlsDto } from '../dto/c2b-register-urls.dto';
 import { C2BSimulateDto } from '../dto/c2b-simulate.dto';
 import { B2CPaymentRequestDto } from '../dto/b2c-payment-request.dto';
 import { B2BPaymentRequestDto } from '../dto/b2b-payment-request.dto';
+import { StkPushRequestDto } from '../dto/stk-push-request.dto';
 
 @ApiTags('Mpesa (Daraja)')
 @Controller('mpesa')
@@ -71,6 +76,30 @@ export class MpesaController {
     return ResponseUtil.success(data, 'B2B payment requested', 201);
   }
 
+  @Post('stk/push')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Initiate an STK push payment' })
+  async stkPush(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: StkPushRequestDto,
+  ) {
+    const data = await this.mpesaService.stkPush(dto, user.id);
+    return ResponseUtil.success(data, 'STK push requested', 201);
+  }
+
+  @Get('stk/status/:orderId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Check STK payment status by order id' })
+  async stkStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('orderId') orderId: string,
+  ) {
+    const data = await this.mpesaService.getStkStatus(orderId, user.id);
+    return ResponseUtil.success(data, 'STK status retrieved');
+  }
+
   // --- Public callback endpoints (Daraja calls these) ---
 
   @Post('c2b/validation')
@@ -105,6 +134,14 @@ export class MpesaController {
     this.logger.log(`B2C timeout callback from ${req.ip}`);
     this.logger.debug(body);
     return this.mpesaService.handleB2CTimeout(body);
+  }
+
+  @Post('stk/callback')
+  @ApiOperation({ summary: 'Daraja STK push callback' })
+  async stkCallback(@Body() body: any, @Req() req: Request) {
+    this.logger.log(`Daraja STK callback from ${req.ip}`);
+    this.logger.debug(body);
+    return this.mpesaService.handleStkCallback(body);
   }
 
   @Post('b2b/result')

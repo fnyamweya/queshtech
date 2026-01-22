@@ -518,11 +518,7 @@ export function AdminCustomerDetailPage() {
         )}
       </div>
 
-      {isLoading && (
-        <div className="rounded-lg border bg-card p-6">
-          <p className="text-muted-foreground">Loading…</p>
-        </div>
-      )}
+      {isLoading ? null : null}
 
       {!isLoading && !customer && (
         <div className="rounded-lg border bg-card p-6 space-y-3">

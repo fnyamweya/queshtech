@@ -183,7 +183,7 @@ export function AdminBrandsPage() {
                 <Badge variant="secondary">{brands.length}</Badge>
               </div>
               <CardDescription>
-                {isLoading ? 'Loading…' : error ? error : 'Search and select a brand to edit.'}
+                {error ? error : 'Search and select a brand to edit.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -192,7 +192,7 @@ export function AdminBrandsPage() {
                 <CommandList>
                   <ScrollArea className="h-[360px]">
                     {visibleBrands.length === 0 ? (
-                      <CommandEmpty>{isLoading ? 'Loading…' : 'No brands found.'}</CommandEmpty>
+                      <CommandEmpty>No brands found.</CommandEmpty>
                     ) : null}
                     {visibleBrands.map((b) => {
                       const isSelected = b.id === draftId

@@ -7,14 +7,14 @@ export class RefactorProductSkuMediaAvailability20260115123000
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      'ALTER TABLE "product" ADD COLUMN "seo_title" text',
+      'ALTER TABLE "product" ADD COLUMN IF NOT EXISTS "seo_title" text',
     );
     await queryRunner.query(
-      'ALTER TABLE "product" ADD COLUMN "seo_description" text',
+      'ALTER TABLE "product" ADD COLUMN IF NOT EXISTS "seo_description" text',
     );
 
     await queryRunner.query(
-      "ALTER TABLE \"product_sku\" ADD COLUMN \"availability\" jsonb NOT NULL DEFAULT '{}'::jsonb",
+      "ALTER TABLE \"product_sku\" ADD COLUMN IF NOT EXISTS \"availability\" jsonb NOT NULL DEFAULT '{}'::jsonb",
     );
 
     await queryRunner.query(
@@ -39,14 +39,14 @@ export class RefactorProductSkuMediaAvailability20260115123000
       'CREATE INDEX IF NOT EXISTS "idx_product_translation_locale" ON "product_translation" ("locale")',
     );
     await queryRunner.query(
-      'ALTER TABLE "product_translation" ADD CONSTRAINT "FK_product_translation_product" FOREIGN KEY ("product_id") REFERENCES "product"("id") ON DELETE CASCADE',
+      'DO $$ BEGIN ALTER TABLE "product_translation" ADD CONSTRAINT "FK_product_translation_product" FOREIGN KEY ("product_id") REFERENCES "product"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;',
     );
 
     await queryRunner.query(
-      "ALTER TABLE \"product\" ADD COLUMN \"availability_json\" jsonb NOT NULL DEFAULT '{}'::jsonb",
+      "ALTER TABLE \"product\" ADD COLUMN IF NOT EXISTS \"availability_json\" jsonb NOT NULL DEFAULT '{}'::jsonb",
     );
     await queryRunner.query(
-      "ALTER TABLE \"product\" ADD COLUMN \"images_json\" jsonb NOT NULL DEFAULT '[]'::jsonb",
+      "ALTER TABLE \"product\" ADD COLUMN IF NOT EXISTS \"images_json\" jsonb NOT NULL DEFAULT '[]'::jsonb",
     );
 
     await queryRunner.query(

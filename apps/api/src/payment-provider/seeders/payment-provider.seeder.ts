@@ -46,6 +46,20 @@ export class PaymentProviderSeeder {
         isActive: true,
         metadata: { seededBy: 'PaymentProviderSeeder', seedKey: 'card' },
       },
+      {
+        code: 'PAYSTACK',
+        name: 'Paystack',
+        description: 'Paystack payment provider',
+        isActive: true,
+        metadata: { seededBy: 'PaymentProviderSeeder', seedKey: 'paystack' },
+      },
+      {
+        code: 'CELLULANT',
+        name: 'Cellulant',
+        description: 'Cellulant Tingg payment provider',
+        isActive: true,
+        metadata: { seededBy: 'PaymentProviderSeeder', seedKey: 'cellulant' },
+      },
     ];
   }
 

@@ -97,6 +97,27 @@ export class OrderPaymentService {
     });
   }
 
+  async findLatestForOrder(opts: {
+    orderId: string;
+    provider?: string;
+    method?: string;
+  }): Promise<OrderPayment | null> {
+    const { orderId, provider, method } = opts;
+    const where: any = { orderId };
+    if (provider) where.provider = provider;
+    if (method) where.method = method;
+    return this.paymentRepo.findOne({
+      where,
+      order: { createdAt: 'DESC' as any },
+    });
+  }
+
+  async findByExternalRef(externalRef: string): Promise<OrderPayment | null> {
+    const ref = String(externalRef || '').trim();
+    if (!ref) return null;
+    return this.paymentRepo.findOne({ where: { externalRef: ref } });
+  }
+
   async createForOrder(
     orderId: string,
     payload: CreateOrderPaymentDto,

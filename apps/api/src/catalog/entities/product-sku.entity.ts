@@ -5,10 +5,12 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Product } from './product.entity';
+import { ProductImage } from './product-image.entity';
 
 export type SkuStatus = 'active' | 'inactive' | 'archived';
 
@@ -25,6 +27,9 @@ export class ProductSku {
   @ManyToOne(() => Product, (product) => product.skus, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'product_id' })
   product: Product;
+
+  @OneToMany(() => ProductImage, (image) => image.sku)
+  images: ProductImage[];
 
   @Column({ type: 'text' })
   sku: string;
@@ -64,9 +69,6 @@ export class ProductSku {
     default: () => "'{}'::jsonb",
   })
   inventory: Record<string, unknown>;
-
-  @Column({ name: 'images_json', type: 'jsonb', default: () => "'[]'::jsonb" })
-  imagesJson: string[];
 
   @Column({
     name: 'availability',

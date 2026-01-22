@@ -11,6 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CreateProductSkuDto } from './create-product-sku.dto';
+import { CreateProductImageDto } from './product-image.dto';
 import { ProductOptionDefinitionDto } from './product-option-definition.dto';
 
 export enum ProductStatus {
@@ -29,6 +30,11 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Short product description' })
+  @IsOptional()
+  @IsString()
+  shortDescription?: string;
 
   @ApiPropertyOptional({
     description: 'Product status',
@@ -99,4 +105,14 @@ export class CreateProductDto {
   @IsOptional()
   @IsObject()
   metaJson?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Product images (shared across SKUs)',
+    type: () => CreateProductImageDto,
+    isArray: true,
+  })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateProductImageDto)
+  images?: CreateProductImageDto[];
 }

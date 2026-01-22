@@ -23,6 +23,7 @@ import { ProductCategory } from './product-category.entity';
 @Index('uq_category_slug_per_taxonomy', ['taxonomyId', 'slug'], {
   unique: true,
 })
+@Index('idx_category_homepage', ['isHomepage'])
 export class Category {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -53,6 +54,9 @@ export class Category {
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @Column({ name: 'is_homepage', type: 'boolean', default: false })
+  isHomepage: boolean;
 
   @Column({ name: 'is_leaf', type: 'boolean', default: false })
   isLeaf: boolean;

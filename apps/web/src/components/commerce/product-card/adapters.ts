@@ -29,7 +29,7 @@ export function defaultProductAdapter(): ProductCardAdapter<Product> {
     },
     getPrice: (p) => (typeof p.price === 'number' ? p.price : null),
     getCompareAtPrice: (p) => (typeof p.compareAtPrice === 'number' ? p.compareAtPrice : null),
-    getCurrency: (p) => p.currency || 'KES',
+    getCurrency: (p) => p.currency,
     getRating: (p) => (typeof p.rating === 'number' ? p.rating : null),
     getReviewCount: (p) => (typeof p.reviewCount === 'number' ? p.reviewCount : null),
     getInStock: (p) => Boolean(p.inStock),

@@ -24,7 +24,7 @@ interface MiniCartProps {
   cart: Cart
   onQuantityChange: (id: string, quantity: number) => void
   onRemove: (id: string) => void
-  onAddToCart: (product: Product) => void
+  onAddToCart: (product: Product, variants?: Record<string, string>, quantity?: number, skuId?: string) => void
 }
 
 export function MiniCart({
@@ -37,6 +37,7 @@ export function MiniCart({
 }: MiniCartProps) {
   const [, setLocation] = useLocation()
   const { landingCollections, isLoading: isUpsellLoading } = usePublicCollections({ limit: 12 })
+  const cartCurrency = cart.items[0]?.product?.currency || ''
 
   const handleCheckout = () => {
     onClose()
@@ -75,10 +76,11 @@ export function MiniCart({
       .slice(0, 4)
   }, [cart.items, landingCollections])
 
-  const formatMoney = (amount: number) => {
+  const formatMoney = (amount: number, currency?: string | null) => {
+    const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
     return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
+      style: hasCurrency ? 'currency' : 'decimal',
+      currency: hasCurrency ? currency : undefined,
       maximumFractionDigits: 0,
     }).format(amount)
   }
@@ -134,7 +136,7 @@ export function MiniCart({
             <p className="text-sm text-muted-foreground mb-6">
               Add items to get started
             </p>
-            <Button onClick={onClose} className="h-11 rounded-full gap-2">
+            <Button onClick={onClose} className="h-11 rounded-md gap-2">
               <Sparkle size={18} weight="fill" />
               Continue Shopping
             </Button>
@@ -191,11 +193,11 @@ export function MiniCart({
                                 <div className="text-sm font-medium line-clamp-1 hover:underline">{p.name}</div>
                               </Link>
                               <div className="text-xs text-muted-foreground line-clamp-1">{p.brand}</div>
-                              <div className="mt-1 text-sm font-semibold">{formatMoney(p.price)}</div>
+                              <div className="mt-1 text-sm font-semibold">{formatMoney(p.price, p.currency || cartCurrency)}</div>
                             </div>
                             <Button
                               size="sm"
-                              className={cn('h-9 rounded-full gap-2', !p.inStock && 'opacity-60')}
+                              className={cn('h-9 rounded-md gap-2', !p.inStock && 'opacity-60')}
                               disabled={!p.inStock}
                               onClick={() => onAddToCart(p)}
                             >
@@ -220,7 +222,7 @@ export function MiniCart({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <Price price={cart.subtotal} currency="KES" size="sm" />
+                  <Price price={cart.subtotal} currency={cartCurrency} size="sm" />
                 </div>
                 {cart.discount > 0 && (
                   <motion.div
@@ -230,7 +232,7 @@ export function MiniCart({
                   >
                     <span className="text-muted-foreground">Discount</span>
                     <span className="text-destructive">
-                      -<Price price={cart.discount} currency="KES" size="sm" />
+                      -<Price price={cart.discount} currency={cartCurrency} size="sm" />
                     </span>
                   </motion.div>
                 )}
@@ -244,11 +246,11 @@ export function MiniCart({
 
               <div className="flex items-center justify-between">
                 <span className="font-semibold">Total</span>
-                <Price price={cart.total} currency="KES" size="lg" />
+                <Price price={cart.total} currency={cartCurrency} size="lg" />
               </div>
 
               <div className="space-y-2">
-                <Button className="w-full h-12 rounded-full" onClick={handleCheckout}>
+                <Button className="w-full h-12 rounded-md" onClick={handleCheckout}>
                   Proceed to checkout
                 </Button>
                 <Button

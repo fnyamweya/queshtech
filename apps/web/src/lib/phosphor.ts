@@ -32,7 +32,7 @@ export const toPhosphorComponentName = (value?: string | null) => {
 export const resolvePhosphorIcon = (value?: string | null): IconComponent | null => {
   const name = toPhosphorComponentName(value)
   if (!name) return null
-  return (PhosphorIcons as Record<string, IconComponent>)[name] || null
+  return (PhosphorIcons as unknown as Record<string, IconComponent>)[name] || null
 }
 
-export const phosphorIcons = PhosphorIcons as Record<string, IconComponent>
+export const phosphorIcons = PhosphorIcons as unknown as Record<string, IconComponent>

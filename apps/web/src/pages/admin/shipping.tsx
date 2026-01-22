@@ -19,13 +19,13 @@ type ShippingZone = {
   name?: string
   code?: string
   isActive?: boolean
-  priority?: number
+  locations?: Array<{ id?: string }>
+  zoneMethods?: Array<{ id?: string }>
 }
 
 type ZoneDraft = {
   name: string
   code: string
-  priority: string
   isActive: boolean
 }
 
@@ -58,7 +58,6 @@ export function AdminShippingPage() {
     setZoneDraft({
       name: zone.name || '',
       code: zone.code || '',
-      priority: typeof zone.priority === 'number' ? String(zone.priority) : '',
       isActive: zone.isActive !== false,
     })
   }, [])
@@ -137,7 +136,6 @@ export function AdminShippingPage() {
       await patchZone(editingZoneId, {
         name: zoneDraft.name.trim(),
         code: zoneDraft.code.trim(),
-        ...(zoneDraft.priority.trim() ? { priority: Number(zoneDraft.priority) } : {}),
         isActive: zoneDraft.isActive,
       })
       toast.success('Zone updated')
@@ -167,12 +165,7 @@ export function AdminShippingPage() {
   }, [cancelEdit, deleteZoneId, editingZoneId, loadZones, removeZone])
 
   const sortedZones = useMemo(() => {
-    return [...zones].sort((a, b) => {
-      const ap = typeof a.priority === 'number' ? a.priority : Number.POSITIVE_INFINITY
-      const bp = typeof b.priority === 'number' ? b.priority : Number.POSITIVE_INFINITY
-      if (ap !== bp) return ap - bp
-      return String(a.name || a.id).localeCompare(String(b.name || b.id))
-    })
+    return [...zones].sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)))
   }, [zones])
 
   return (
@@ -191,7 +184,7 @@ export function AdminShippingPage() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="zoneName">Zone name</Label>
@@ -209,11 +202,15 @@ export function AdminShippingPage() {
               </div>
             </div>
 
+            <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+              Tip: Create a zone, attach destinations, then assign methods and rates from the zone detail page.
+            </div>
+
             <Separator />
 
             {sortedZones.length === 0 ? (
               <div className="text-sm text-muted-foreground">
-                {isLoading ? 'Loading zones…' : 'No zones yet. Create your first zone to start configuring shipping.'}
+                No zones yet. Create your first zone to start configuring shipping.
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -231,6 +228,11 @@ export function AdminShippingPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                        <span>Destinations: {Array.isArray(z.locations) ? z.locations.length : 0}</span>
+                        <Separator orientation="vertical" className="h-4" />
+                        <span>Methods: {Array.isArray(z.zoneMethods) ? z.zoneMethods.length : 0}</span>
+                      </div>
                       {editingZoneId === z.id && zoneDraft ? (
                         <div className="space-y-4 rounded-md border bg-muted/20 p-3">
                           <div className="grid gap-3 sm:grid-cols-2">
@@ -241,11 +243,6 @@ export function AdminShippingPage() {
                             <div className="space-y-2">
                               <Label>Code</Label>
                               <Input value={zoneDraft.code} onChange={(e) => setZoneDraft({ ...zoneDraft, code: e.target.value })} />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Priority</Label>
-                              <Input type="number" value={zoneDraft.priority} onChange={(e) => setZoneDraft({ ...zoneDraft, priority: e.target.value })} />
-                              <p className="text-xs text-muted-foreground">Lower number = higher priority.</p>
                             </div>
                             <div className="space-y-2">
                               <Label>Active</Label>

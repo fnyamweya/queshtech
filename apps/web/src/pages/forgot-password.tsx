@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { AuthShell } from '@/components/auth/auth-shell'
-import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { AuthNotice } from '@/components/auth/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { ArrowRight, ArrowLeft } from '@phosphor-icons/react'
@@ -280,7 +280,6 @@ export function ForgotPasswordPage() {
 
           <div className="grid gap-3">
             <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
-              {isLoading ? <AuthSpinner /> : null}
               Send verification code
               <ArrowRight size={16} weight="bold" />
             </Button>
@@ -323,7 +322,6 @@ export function ForgotPasswordPage() {
 
           <div className="grid gap-3">
             <Button type="submit" className="h-11 w-full gap-2" disabled={!canVerify || isLoading}>
-              {isLoading ? <AuthSpinner /> : null}
               Verify code
               <ArrowRight size={16} weight="bold" />
             </Button>
@@ -373,7 +371,6 @@ export function ForgotPasswordPage() {
                   }
                 }}
               >
-                {isLoading ? <AuthSpinner /> : null}
                 Send again
               </Button>
             </div>
@@ -433,7 +430,6 @@ export function ForgotPasswordPage() {
 
           <div className="grid gap-3">
             <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
-              {isLoading ? <AuthSpinner /> : null}
               Reset password
               <ArrowRight size={16} weight="bold" />
             </Button>

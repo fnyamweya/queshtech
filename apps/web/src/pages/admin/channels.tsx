@@ -343,7 +343,7 @@ export function AdminChannelsPage() {
                 <Badge variant="secondary">{channels.length}</Badge>
               </div>
               <CardDescription>
-                {isLoading ? 'Loading…' : error ? error : 'Search and select a channel to edit.'}
+                {error ? error : 'Search and select a channel to edit.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -352,7 +352,7 @@ export function AdminChannelsPage() {
                 <CommandList>
                   <ScrollArea className="h-[360px]">
                     {visibleChannels.length === 0 ? (
-                      <CommandEmpty>{isLoading ? 'Loading…' : 'No channels found.'}</CommandEmpty>
+                      <CommandEmpty>No channels found.</CommandEmpty>
                     ) : null}
                     {visibleChannels.map((c) => {
                       const isSelected = c.id === draftId

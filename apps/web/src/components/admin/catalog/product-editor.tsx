@@ -81,7 +81,12 @@ function toDraftV1(product?: any): ProductEditorDraftV1 {
     externalRef: product?.externalRef ?? '',
     brandId: product?.brandId ?? '',
     categoryIdsText: Array.isArray(product?.categoryIds) ? product.categoryIds.join(', ') : '',
-    imagesText: Array.isArray(product?.images) ? product.images.join(', ') : '',
+    imagesText: Array.isArray(product?.images)
+      ? product.images
+          .map((img: any) => (typeof img === 'string' ? img : img?.url))
+          .filter(Boolean)
+          .join(', ')
+      : '',
     translationsText: JSON.stringify(translations, null, 2),
     optionDefinitionsText: JSON.stringify(optionDefinitions, null, 2),
     availabilityText: JSON.stringify(availability, null, 2),

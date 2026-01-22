@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
@@ -61,20 +62,60 @@ export function FilterSidebar({
     priceRange[1] < 1000
 
   return (
-    <div className={cn('space-y-6', className)}>
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Filters</h3>
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClearAll}
-            className="h-8 text-xs"
-          >
-            Clear All
+    <div
+      className={cn(
+        'rounded-md border border-border/60 bg-background/70 backdrop-blur-xl p-4',
+        'space-y-5',
+        className
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold">Filters</h3>
+          <p className="text-xs text-muted-foreground">Refine products by price and attributes.</p>
+        </div>
+        {hasActiveFilters ? (
+          <Button variant="outline" size="sm" onClick={onClearAll} className="h-8">
+            <X size={14} weight="bold" className="mr-1" />
+            Clear
           </Button>
-        )}
+        ) : null}
       </div>
+
+      {hasActiveFilters ? (
+        <div className="flex flex-wrap gap-2">
+          {priceRange[0] > 0 || priceRange[1] < 1000 ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1 text-xs cursor-pointer transition-[transform,box-shadow,background-color,color,border-color,opacity] active:translate-y-px active:scale-[0.99] hover:bg-muted"
+              onClick={() => onPriceChange([0, 1000])}
+              aria-label="Remove price range filter"
+            >
+              <span>Price: {priceRange[0]}–{priceRange[1]}</span>
+              <X size={12} weight="bold" />
+            </button>
+          ) : null}
+
+          {filters.flatMap((group) =>
+            (selectedFilters[group.id] || []).map((optionId) => {
+              const label = group.options.find((o) => o.id === optionId)?.label || optionId
+              return (
+                <button
+                  key={`${group.id}:${optionId}`}
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1 text-xs cursor-pointer transition-[transform,box-shadow,background-color,color,border-color,opacity] active:translate-y-px active:scale-[0.99] hover:bg-muted"
+                  onClick={() => onFilterChange(group.id, optionId, false)}
+                  aria-label={`Remove ${group.label} filter ${label}`}
+                >
+                  <span className="text-muted-foreground">{group.label}:</span>
+                  <span className="font-medium">{label}</span>
+                  <X size={12} weight="bold" />
+                </button>
+              )
+            })
+          )}
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         <div>
@@ -104,8 +145,15 @@ export function FilterSidebar({
             open={expandedGroups.includes(group.id)}
             onOpenChange={() => toggleGroup(group.id)}
           >
-            <CollapsibleTrigger className="flex w-full items-center justify-between py-2 hover:text-foreground transition-colors">
-              <span className="text-sm font-medium">{group.label}</span>
+            <CollapsibleTrigger className="flex w-full cursor-pointer select-none items-center justify-between rounded-md px-2 py-2 hover:bg-muted transition-[background-color,color]">
+              <span className="text-sm font-medium">
+                {group.label}
+                {selectedFilters[group.id]?.length ? (
+                  <Badge variant="secondary" className="ml-2 px-2 py-0 text-[10px]">
+                    {selectedFilters[group.id].length}
+                  </Badge>
+                ) : null}
+              </span>
               <CaretDown
                 size={16}
                 className={cn(
@@ -115,7 +163,7 @@ export function FilterSidebar({
               />
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="space-y-3 pt-3 pb-2">
+              <div className="space-y-3 pt-3 pb-2 px-2">
                 {group.options.map((option) => {
                   const isChecked =
                     selectedFilters[group.id]?.includes(option.id) || false

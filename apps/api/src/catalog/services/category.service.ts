@@ -33,6 +33,16 @@ export class CategoryService {
     private readonly shippingCatalogContextCacheIndex: ShippingCatalogContextCacheIndexService,
   ) {}
 
+  private ensureMediaFields(category: Category): Category {
+    if ((category as any).avatarUrl === undefined) {
+      (category as any).avatarUrl = null;
+    }
+    if ((category as any).imageUrl === undefined) {
+      (category as any).imageUrl = null;
+    }
+    return category;
+  }
+
   async create(payload: CreateCategoryDto): Promise<Category> {
     const parentId = this.normalizeParentId(payload);
 
@@ -60,6 +70,7 @@ export class CategoryService {
       slug,
       isActive:
         payload.isActive ?? this.isActiveFromStatus(payload.status) ?? true,
+      isHomepage: payload.isHomepage ?? false,
       isLeaf: payload.isLeaf ?? false,
       sortOrder: payload.order ?? payload.sortOrder ?? 0,
       icon: payload.icon,
@@ -102,12 +113,13 @@ export class CategoryService {
     const rawKey = cacheKeyFromParts('catalog', 'categories', 'list', {
       taxonomyId: filters.taxonomyId,
       isActive: filters.isActive,
+      isHomepage: filters.isHomepage,
     });
     const key = `catalog:categories:list:${cacheKeyHash(rawKey)}`;
 
     return this.cache.remember(
       key,
-      () => {
+      async () => {
         const where: FindOptionsWhere<Category> = {};
 
         if (filters.taxonomyId) {
@@ -118,11 +130,16 @@ export class CategoryService {
           where.isActive = filters.isActive;
         }
 
-        return this.categoryRepository.find({
+        if (filters.isHomepage !== undefined) {
+          (where as any).isHomepage = filters.isHomepage;
+        }
+
+        const rows = await this.categoryRepository.find({
           where: Object.keys(where).length ? where : undefined,
           relations: ['translations'],
           order: { sortOrder: 'ASC', key: 'ASC' },
         });
+        return rows.map((row) => this.ensureMediaFields(row));
       },
       { ttlSeconds: 120 },
     );
@@ -141,7 +158,7 @@ export class CategoryService {
     );
 
     if (!category) throw new NotFoundException('Category not found');
-    return category;
+    return this.ensureMediaFields(category);
   }
 
   private pickCategoryTranslation(category: Category, locale?: string) {
@@ -161,6 +178,27 @@ export class CategoryService {
     filters: PublicListCategoriesDto,
   ): Promise<PublicCategoryDto[]> {
     const locale = filters.locale;
+    const toNumber = (value: unknown): number | undefined => {
+      if (value === null || value === undefined) return undefined;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const rawLimit = toNumber(filters.limit);
+    const rawPage = toNumber(filters.page);
+    const hasPagination =
+      typeof rawPage === 'number' || typeof rawLimit === 'number';
+    const limit = hasPagination
+      ? Math.min(200, Math.max(1, rawLimit ?? 20))
+      : undefined;
+    const page = hasPagination ? Math.max(1, rawPage ?? 1) : undefined;
+
+    const isActive =
+      typeof filters.isActive === 'boolean'
+        ? filters.isActive
+        : filters.isActive === undefined
+          ? true
+          : String(filters.isActive).toLowerCase() === 'true';
     const rawKey = cacheKeyFromParts(
       'public',
       'catalog',
@@ -169,6 +207,10 @@ export class CategoryService {
       {
         taxonomyId: filters.taxonomyId,
         locale: locale || 'en',
+        isActive,
+        isHomepage: filters.isHomepage,
+        page: page ?? 'all',
+        limit: limit ?? 'all',
       },
     );
     const key = `public:catalog:categories:list:${cacheKeyHash(rawKey)}`;
@@ -180,15 +222,26 @@ export class CategoryService {
           .createQueryBuilder('category')
           .leftJoinAndSelect('category.translations', 'translations')
           .innerJoin('category.taxonomy', 'taxonomy')
-          .where('category.is_active = true')
+          .where('category.is_active = :isActive', { isActive })
           .andWhere('taxonomy.is_active = true')
-          .orderBy('category.sort_order', 'ASC')
+          .orderBy('category.sortOrder', 'ASC')
           .addOrderBy('category.key', 'ASC');
 
         if (filters.taxonomyId) {
           qb.andWhere('category.taxonomy_id = :taxonomyId', {
             taxonomyId: filters.taxonomyId,
           });
+        }
+
+        if (filters.isHomepage !== undefined) {
+          qb.andWhere('category.is_homepage = :isHomepage', {
+            isHomepage: filters.isHomepage,
+          });
+        }
+
+        if (limit) {
+          const offset = ((page ?? 1) - 1) * limit;
+          qb.take(limit).skip(offset);
         }
 
         const rows = await qb.getMany();
@@ -207,6 +260,7 @@ export class CategoryService {
             imageUrl: c.imageUrl,
             sortOrder: c.sortOrder,
             isLeaf: c.isLeaf,
+            isHomepage: c.isHomepage,
           };
         });
       },
@@ -255,6 +309,7 @@ export class CategoryService {
       imageUrl: row.imageUrl,
       sortOrder: row.sortOrder,
       isLeaf: row.isLeaf,
+      isHomepage: row.isHomepage,
     };
   }
 
@@ -288,6 +343,7 @@ export class CategoryService {
         payload.isActive ??
         this.isActiveFromStatus(payload.status) ??
         category.isActive,
+        isHomepage: payload.isHomepage ?? category.isHomepage,
       isLeaf: payload.isLeaf ?? category.isLeaf,
       sortOrder: payload.order ?? payload.sortOrder ?? category.sortOrder,
       icon: payload.icon ?? category.icon,

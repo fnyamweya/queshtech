@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsArray,
   IsBoolean,
   IsNumber,
   IsObject,
@@ -99,15 +98,6 @@ export class CreateProductSkuDto {
   @IsOptional()
   @IsObject()
   inventory?: Record<string, unknown>;
-
-  @ApiPropertyOptional({
-    description: 'SKU images',
-    example: ['https://cdn.example.com/1.png'],
-  })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
 
   @ApiPropertyOptional({ description: 'Requires shipping', example: true })
   @IsOptional()

@@ -12,7 +12,7 @@ interface PriceProps {
 export function Price({
   price,
   compareAtPrice,
-  currency = 'KES',
+  currency,
   className,
   size = 'md',
   showDiscount = true,
@@ -23,9 +23,10 @@ export function Price({
     : 0
 
   const formatPrice = (amount: number) => {
+    const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
     return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency,
+      style: hasCurrency ? 'currency' : 'decimal',
+      currency: hasCurrency ? currency : undefined,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount)

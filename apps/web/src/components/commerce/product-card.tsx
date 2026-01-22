@@ -38,7 +38,7 @@ export type ProductCardProps<TProduct = Product> = {
 
   // Legacy props (supported for smooth migration).
   config?: LegacyConfig
-  onAddToCart?: (product: any, variants?: Record<string, string>) => void
+  onAddToCart?: (product: any, variants?: Record<string, string>, quantity?: number, skuId?: string) => void
   onQuickView?: (product: any) => void
   onWishlistToggle?: (product: any) => void
   isWishlisted?: boolean
@@ -47,11 +47,11 @@ export type ProductCardProps<TProduct = Product> = {
 function resolveAppearance(variant: ProductCardVariant, input: ProductCardAppearance | undefined): Required<ProductCardAppearance> {
   const mediaAspect =
     input?.media?.aspect ||
-    (variant === 'horizontal' ? 'square' : variant === 'compact' ? 'square' : variant === 'comparison' ? 'square' : 'portrait')
+    (variant === 'horizontal' || variant === 'compact' || variant === 'comparison' || variant === 'grid' ? 'square' : 'portrait')
 
   return {
     preset: input?.preset || 'default',
-    density: input?.density || 'comfortable',
+    density: input?.density || 'compact',
     media: {
       aspect: mediaAspect,
       hoverSwap: input?.media?.hoverSwap ?? true,
@@ -65,7 +65,7 @@ function resolveBehavior<TProduct>(
   variant: ProductCardVariant,
   input: ProductCardBehavior<TProduct> | undefined,
   legacy: {
-    onAddToCart?: (product: TProduct, variants?: Record<string, string>) => void
+    onAddToCart?: (product: TProduct, variants?: Record<string, string>, quantity?: number, skuId?: string) => void
     onQuickView?: (product: TProduct) => void
     onWishlistToggle?: (product: TProduct) => void
     isWishlisted?: boolean
@@ -289,7 +289,7 @@ export function ProductCard<TProduct = Product>({
     const images = adapter.getImages?.(product) || []
     const badges = adapter.getBadges?.(product) || []
     const specs = adapter.getSpecs?.(product) || []
-    const currency = adapter.getCurrency?.(product) || 'KES'
+    const currency = adapter.getCurrency?.(product) || null
     const price = adapter.getPrice?.(product) ?? null
     const compareAtPrice = adapter.getCompareAtPrice?.(product) ?? null
     const unitPriceLabel = adapter.getUnitPriceLabel?.(product) || null

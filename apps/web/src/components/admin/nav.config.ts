@@ -8,6 +8,7 @@ import {
   Headset,
   LayoutDashboard,
   LayoutList,
+  LayoutTemplate,
   MapPinned,
   Megaphone,
   MessageCircle,
@@ -64,7 +65,24 @@ export const AXIS_NAV: AxisNavGroup[] = [
     items: [
       { id: 'orders', title: 'Orders', href: '/axis/orders', icon: ShoppingCart, description: 'Recent and pending orders' },
       { id: 'customers', title: 'Customers', href: '/axis/customers', icon: Users, description: 'Customer profiles' },
-      { id: 'shipping', title: 'Shipping', href: '/axis/shipping', icon: Truck, description: 'Zones, methods, and rates' },
+    ],
+  },
+  {
+    id: 'shipping',
+    label: 'Shipping',
+    items: [
+      {
+        id: 'shipping',
+        title: 'Shipping',
+        href: '/axis/shipping',
+        icon: Truck,
+        description: 'Zones, methods, providers, and rates',
+        children: [
+          { id: 'shipping-zones', title: 'Zones', href: '/axis/shipping', description: 'Destinations and zone setup' },
+          { id: 'shipping-methods', title: 'Methods', href: '/axis/shipping/methods', description: 'Reusable shipping methods' },
+          { id: 'shipping-providers', title: 'Providers', href: '/axis/shipping/providers', description: 'Carrier providers' },
+        ],
+      },
     ],
   },
   {

@@ -20,6 +20,9 @@ export class ResponseInterceptor<T>
   ): Observable<ApiResponse<T>> {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
+    const channel = (request as any)?.channel as
+      | { id?: string; code?: string; name?: string }
+      | undefined;
 
     return next.handle().pipe(
       map((data): ApiResponse<T> => {
@@ -43,11 +46,20 @@ export class ResponseInterceptor<T>
           message = 'Data retrieved successfully';
         }
 
-        return ResponseUtil.success(
+        const payload = ResponseUtil.success(
           data,
           message,
           statusCode,
-        ) as ApiResponse<T>;
+        ) as ApiResponse<T> & { meta?: Record<string, unknown> };
+
+        if (channel) {
+          payload.meta = {
+            ...(payload.meta || {}),
+            channel,
+          };
+        }
+
+        return payload;
       }),
     );
   }

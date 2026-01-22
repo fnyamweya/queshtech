@@ -18,6 +18,21 @@ export type ApiRequestOptions = {
   token?: string | null
   signal?: AbortSignal
   headers?: Record<string, string>
+  includeChannel?: boolean
+}
+
+let cachedChannelCode: string | null | undefined
+let channelPromise: Promise<string | null> | null = null
+
+async function getDefaultChannelCode(): Promise<string | null> {
+  if (typeof cachedChannelCode !== 'undefined') return cachedChannelCode
+
+  if (channelPromise) return channelPromise
+  channelPromise = fetchDefaultChannelCode()
+  const resolved = await channelPromise
+  cachedChannelCode = resolved
+  channelPromise = null
+  return resolved
 }
 
 function joinUrl(baseUrl: string, path: string) {
@@ -36,8 +51,77 @@ export function getApiBaseUrl() {
   return (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 }
 
+export function getApiPrefix() {
+  return (import.meta.env.VITE_API_PREFIX || '/api/v1').replace(/\/$/, '')
+}
+
 export function apiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) return path
   return joinUrl(getApiBaseUrl(), path)
+}
+
+function apiPath(path: string) {
+  const prefix = getApiPrefix()
+  const p = path.startsWith('/') ? path : `/${path}`
+  return `${prefix}${p}`
+}
+
+function normalizeApiPath(path: string) {
+  if (/^https?:\/\//i.test(path)) return path
+  const prefix = getApiPrefix()
+  const p = path.startsWith('/') ? path : `/${path}`
+
+  if (p === prefix || p.startsWith(`${prefix}/`)) return p
+  if (p.startsWith('/auth') || p.startsWith('/oauth')) return p
+
+  return `${prefix}${p}`
+}
+
+function getChannelCodeHint(): string | null {
+  const raw =
+    import.meta.env.VITE_DEFAULT_CHANNEL_CODE ||
+    import.meta.env.VITE_CHANNEL_CODE ||
+    import.meta.env.VITE_WEB_CHANNEL_CODE
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  return value ? value : null
+}
+
+export async function fetchDefaultChannelCode(): Promise<string | null> {
+  try {
+    const hint = getChannelCodeHint()
+
+    if (hint) {
+      const res = await apiRequest<
+        { data?: { code?: string } | null } | { code?: string } | null
+      >(apiPath(`/public/channels/${encodeURIComponent(hint)}`), {
+        method: 'GET',
+        includeChannel: false,
+      })
+
+      const direct = (res as any)?.code
+      if (typeof direct === 'string' && direct.trim()) return direct.trim()
+
+      const wrapped = (res as any)?.data?.code
+      if (typeof wrapped === 'string' && wrapped.trim()) return wrapped.trim()
+    }
+
+    const listRes = await apiRequest<
+      { data?: Array<{ code?: string }> | null } | Array<{ code?: string }> | null
+    >(apiPath('/public/channels'), { method: 'GET', includeChannel: false })
+
+    const list = Array.isArray(listRes)
+      ? listRes
+      : Array.isArray((listRes as any)?.data)
+        ? ((listRes as any).data as Array<{ code?: string }>)
+        : []
+
+    const firstCode = list.find((item) => typeof item?.code === 'string' && item.code.trim())?.code
+    if (typeof firstCode === 'string' && firstCode.trim()) return firstCode.trim()
+
+    return null
+  } catch {
+    return null
+  }
 }
 
 async function readBodySafely(response: Response): Promise<unknown> {
@@ -77,11 +161,19 @@ function extractErrorMessage(body: unknown): string | undefined {
 
 export async function apiRequest<T = unknown>(path: string, options?: ApiRequestOptions): Promise<T> {
   const method = options?.method || 'GET'
-  const url = apiUrl(path)
+  const url = apiUrl(normalizeApiPath(path))
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(options?.headers || {}),
+  }
+
+  const includeChannel = options?.includeChannel !== false
+  if (includeChannel && !('x-channel' in headers) && !('X-Channel' in headers)) {
+    const channelCode = await getDefaultChannelCode()
+    if (channelCode) {
+      headers['x-channel'] = channelCode
+    }
   }
 
   let body: BodyInit | undefined

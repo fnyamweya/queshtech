@@ -3,6 +3,7 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsIn,
   IsObject,
   IsOptional,
   IsString,
@@ -38,6 +39,15 @@ export class UpdatePaymentMethodDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({
+    description: 'Payment method status',
+    enum: ['active', 'inactive', 'deprecated'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['active', 'inactive', 'deprecated'])
+  status?: string;
 
   @ApiPropertyOptional({ description: 'Whether method is active' })
   @IsOptional()

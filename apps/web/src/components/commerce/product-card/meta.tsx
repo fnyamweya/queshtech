@@ -28,6 +28,7 @@ export function ProductCardMeta<TProduct>({
   const meta = ctx.behavior.meta
   const content = ctx.behavior.content
   const discovery = ctx.behavior.discovery
+  const dense = ctx.appearance.density === 'compact' || ctx.variant === 'compact'
 
   const showBrand = Boolean(meta.showBrand && ctx.brand)
   const showRating = Boolean(meta.showRating && typeof ctx.rating === 'number')
@@ -52,7 +53,7 @@ export function ProductCardMeta<TProduct>({
         )
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn(dense ? 'space-y-1.5' : 'space-y-2', className)}>
       {discovery.reason?.show && discovery.reason.text ? (
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{discovery.reason.text}</p>
       ) : null}
@@ -64,7 +65,7 @@ export function ProductCardMeta<TProduct>({
       <h3
         className={cn(
           'font-semibold tracking-tight',
-          ctx.variant === 'compact' ? 'text-sm' : 'text-[15px]',
+          dense ? 'text-sm' : 'text-[15px]',
           clampClass('line-clamp', content.titleClamp, 'line-clamp-2')
         )}
       >
@@ -72,7 +73,7 @@ export function ProductCardMeta<TProduct>({
       </h3>
 
       {content.showDescription && ctx.description ? (
-        <p className={cn('text-sm text-muted-foreground', clampClass('line-clamp', content.descriptionClamp, 'line-clamp-2'))}>
+        <p className={cn(dense ? 'text-xs text-muted-foreground' : 'text-sm text-muted-foreground', clampClass('line-clamp', content.descriptionClamp, 'line-clamp-2'))}>
           {ctx.description}
         </p>
       ) : null}
@@ -91,4 +92,3 @@ export function ProductCardMeta<TProduct>({
     </div>
   )
 }
-

@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/commerce/product-card'
+import { ListingBanner } from '@/components/commerce/listing-banner'
 import { usePublicSearchProducts } from '@/hooks/use-public-products'
 import { usePublicCategories } from '@/hooks/use-catalog-categories'
 import type { Product, SortOption } from '@/types'
 import { addRecentSearch, clearRecentSearches, loadRecentSearches } from '@/lib/recent-searches'
 
 interface SearchPageProps {
-  onAddToCart: (product: Product, variants?: Record<string, string>) => void
+  onAddToCart: (product: Product, variants?: Record<string, string>, quantity?: number, skuId?: string) => void
 }
 
 export function SearchPage({ onAddToCart }: SearchPageProps) {
@@ -30,6 +31,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
     limit: 24,
     q: qParam,
   })
+
 
   const { categories } = usePublicCategories({ limit: 50, isActive: true })
 
@@ -113,34 +115,63 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
     <div className={container + ' py-6 sm:py-8'}>
       <Breadcrumbs items={[{ label: 'Search' }, ...(qParam ? [{ label: qParam }] : [])]} />
 
-      <div className="mt-2 rounded-2xl border border-border/60 bg-background/70 backdrop-blur-xl p-4 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Search</h1>
-            <p className="text-sm text-muted-foreground">Find products fast with instant results, categories, and smart sorting.</p>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="secondary" className="rounded-full">
-              <TrendUp size={12} weight="bold" className="mr-1" />
-              Tip: try “gaming laptop”
-            </Badge>
-          </div>
-        </div>
+      <ListingBanner
+        className="mt-2"
+        eyebrow={qParam ? 'Search results' : 'Search'}
+        title={qParam ? `Results for “${qParam}”` : 'Search'}
+        description="Find products fast with instant results, categories, and smart sorting."
+        actions={
+          <Badge variant="secondary" className="px-2 py-1">
+            <TrendUp size={12} weight="bold" className="mr-1" />
+            Tip: try “gaming laptop”
+          </Badge>
+        }
+        footer={
+          <>
+            <p className="text-sm text-muted-foreground">{resultsCountLabel}</p>
 
-        <div className="mt-4 flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Sort:</span>
+              {(
+                [
+                  { id: 'relevance', label: 'Relevance' },
+                  { id: 'price-asc', label: 'Price ↑' },
+                  { id: 'price-desc', label: 'Price ↓' },
+                  { id: 'rating', label: 'Rating' },
+                  { id: 'newest', label: 'Newest' },
+                ] as const
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={
+                    sortBy === opt.id
+                      ? 'inline-flex items-center rounded-md bg-accent text-accent-foreground px-3 py-1 text-xs cursor-pointer active:translate-y-px active:scale-[0.99]'
+                      : 'inline-flex items-center rounded-md border border-border bg-background px-3 py-1 text-xs cursor-pointer hover:bg-muted transition-colors active:translate-y-px active:scale-[0.99]'
+                  }
+                  onClick={() => setSortBy(opt.id)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      >
+        <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <MagnifyingGlass size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Search products, brands, categories…"
-              className="h-11 rounded-full pl-10 pr-11 bg-background"
+              className="h-11 rounded-md pl-10 pr-11 bg-background"
               aria-label="Search query"
             />
             {inputValue.trim() ? (
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground cursor-pointer transition-colors active:translate-y-px active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 onClick={() => setInputValue('')}
                 aria-label="Clear search"
               >
@@ -150,7 +181,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
           </div>
           <Button
             variant="outline"
-            className="h-11 rounded-full"
+            className="h-11 rounded-md"
             onClick={() => {
               setInputValue('')
               setSelectedCategorySlug('all')
@@ -168,7 +199,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
               <button
                 key={term}
                 type="button"
-                className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs hover:bg-accent transition-colors"
+                className="inline-flex items-center rounded-md border border-border bg-background px-3 py-1 text-xs cursor-pointer hover:bg-muted transition-colors active:translate-y-px active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 onClick={() => setInputValue(term)}
               >
                 {term}
@@ -176,7 +207,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
             ))}
             <button
               type="button"
-              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 ml-1"
+              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4 ml-1 cursor-pointer"
               onClick={() => {
                 clearRecentSearches()
                 setRecentSearches([])
@@ -194,8 +225,8 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
               type="button"
               className={
                 selectedCategorySlug === 'all'
-                  ? 'inline-flex items-center rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs'
-                  : 'inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs hover:bg-accent transition-colors'
+                  ? 'inline-flex items-center rounded-md bg-primary text-primary-foreground px-3 py-1 text-xs cursor-pointer active:translate-y-px active:scale-[0.99]'
+                  : 'inline-flex items-center rounded-md border border-border bg-background px-3 py-1 text-xs cursor-pointer hover:bg-muted transition-colors active:translate-y-px active:scale-[0.99]'
               }
               onClick={() => setSelectedCategorySlug('all')}
             >
@@ -207,8 +238,8 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
                 type="button"
                 className={
                   selectedCategorySlug === c.slug
-                    ? 'inline-flex items-center rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs'
-                    : 'inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs hover:bg-accent transition-colors'
+                    ? 'inline-flex items-center rounded-md bg-primary text-primary-foreground px-3 py-1 text-xs cursor-pointer active:translate-y-px active:scale-[0.99]'
+                    : 'inline-flex items-center rounded-md border border-border bg-background px-3 py-1 text-xs cursor-pointer hover:bg-muted transition-colors active:translate-y-px active:scale-[0.99]'
                 }
                 onClick={() => setSelectedCategorySlug(c.slug)}
               >
@@ -218,45 +249,10 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
             ))}
           </div>
         ) : null}
-
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">{resultsCountLabel}</p>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Sort:</span>
-            {(
-              [
-                { id: 'relevance', label: 'Relevance' },
-                { id: 'price-asc', label: 'Price ↑' },
-                { id: 'price-desc', label: 'Price ↓' },
-                { id: 'rating', label: 'Rating' },
-                { id: 'newest', label: 'Newest' },
-              ] as const
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={
-                  sortBy === opt.id
-                    ? 'inline-flex items-center rounded-full bg-accent text-accent-foreground px-3 py-1 text-xs'
-                    : 'inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs hover:bg-accent transition-colors'
-                }
-                onClick={() => setSortBy(opt.id)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      </ListingBanner>
 
       <div className="mt-8">
-        {isLoading ? (
-          <div className="py-16 text-center">
-            <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-primary" />
-            <p className="mt-3 text-sm text-muted-foreground">Searching…</p>
-          </div>
-        ) : error ? (
+        {isLoading ? null : error ? (
           <div className="rounded-2xl border border-dashed border-border p-10 text-center">
             <h2 className="text-lg font-semibold">Search unavailable</h2>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
@@ -283,7 +279,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {sortedProducts.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -300,7 +296,7 @@ export function SearchPage({ onAddToCart }: SearchPageProps) {
 
             {showLoadMore ? (
               <div className="mt-10 flex justify-center">
-                <Button variant="outline" className="rounded-full" onClick={() => setLimit(limit + 24)}>
+                <Button variant="outline" className="rounded-md" onClick={() => setLimit(limit + 24)}>
                   Load more
                 </Button>
               </div>

@@ -1,20 +1,26 @@
-import { ComponentProps } from "react"
+import { ComponentProps, ComponentPropsWithoutRef, ElementRef, forwardRef } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import XIcon from "lucide-react/dist/esm/icons/x"
 
 import { cn } from "@/lib/utils"
 
 function Dialog({
+  modal = true,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  // Note: modal={false} as a workaround for React 19 + Radix RemoveScroll infinite loop
+  // See: https://github.com/radix-ui/primitives/issues/2650
+  return <DialogPrimitive.Root data-slot="dialog" modal={modal} {...props} />
 }
 
-function DialogTrigger({
-  ...props
-}: ComponentProps<typeof DialogPrimitive.Trigger>) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
-}
+const DialogTrigger = forwardRef<
+  ElementRef<typeof DialogPrimitive.Trigger>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Trigger>
+>((props, ref) => {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" ref={ref} {...props} />
+})
+
+DialogTrigger.displayName = "DialogTrigger"
 
 function DialogPortal({
   ...props
@@ -28,12 +34,13 @@ function DialogClose({
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
-function DialogOverlay({
-  className,
-  ...props
-}: ComponentProps<typeof DialogPrimitive.Overlay>) {
+const DialogOverlay = forwardRef<
+  ElementRef<typeof DialogPrimitive.Overlay>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(({ className, ...props }, ref) => {
   return (
     <DialogPrimitive.Overlay
+      ref={ref}
       data-slot="dialog-overlay"
       className={cn(
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
@@ -42,17 +49,22 @@ function DialogOverlay({
       {...props}
     />
   )
-}
+})
 
-function DialogContent({
-  className,
-  children,
-  ...props
-}: ComponentProps<typeof DialogPrimitive.Content>) {
+DialogOverlay.displayName = "DialogOverlay"
+
+const DialogContent = forwardRef<
+  ElementRef<typeof DialogPrimitive.Content>,
+  ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
+>(({ className, children, ...props }, ref) => {
   return (
-    <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay
+        data-slot="dialog-overlay"
+        className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50"
+      />
       <DialogPrimitive.Content
+        ref={ref}
         data-slot="dialog-content"
         className={cn(
           "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-2xl border-0 p-6 shadow-2xl shadow-black/15 dark:shadow-black/40 duration-200 sm:max-w-lg",
@@ -66,9 +78,11 @@ function DialogContent({
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
-    </DialogPortal>
+    </DialogPrimitive.Portal>
   )
-}
+})
+
+DialogContent.displayName = "DialogContent"
 
 function DialogHeader({ className, ...props }: ComponentProps<"div">) {
   return (

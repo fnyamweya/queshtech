@@ -81,6 +81,11 @@ export class CreateCollectionDto {
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiPropertyOptional({ description: 'Show this collection on the homepage', default: false })
+  @IsOptional()
+  @IsBoolean()
+  isHomepage?: boolean;
+
   @ApiPropertyOptional({ description: 'Priority used when ordering collections', default: 0 })
   @IsOptional()
   @Type(() => Number)
@@ -134,6 +139,11 @@ export class FilterCollectionDto {
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiPropertyOptional({ description: 'Filter by homepage flag' })
+  @IsOptional()
+  @IsBoolean()
+  isHomepage?: boolean;
+
   @ApiPropertyOptional({ description: 'Page number', default: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -165,6 +175,12 @@ export class PublicCollectionsQueryDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'Filter by homepage flag' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  isHomepage?: boolean;
 
   @ApiPropertyOptional({
     description: 'How many collections to return when listing',

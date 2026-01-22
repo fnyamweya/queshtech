@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { X, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
@@ -20,6 +20,39 @@ export function ImageZoomDialog({
 }: ImageZoomDialogProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
 
+  useEffect(() => {
+    if (!open) return
+    setCurrentIndex(initialIndex)
+  }, [initialIndex, open])
+
+  useEffect(() => {
+    if (!open) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onOpenChange(false)
+      } else if (e.key === 'ArrowLeft') {
+        setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1))
+      } else if (e.key === 'ArrowRight') {
+        setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1))
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, onOpenChange, images.length])
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [open])
+
   const handlePrevious = () => {
     setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1))
   }
@@ -28,10 +61,18 @@ export function ImageZoomDialog({
     setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1))
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-background/95 backdrop-blur-lg border-0">
-        <div className="relative w-full h-[95vh] flex items-center justify-center">
+  if (!open) return null
+
+  return createPortal(
+    <div className="fixed inset-0 z-50">
+      {/* Overlay */}
+      <div
+        className="fixed inset-0 bg-black/90 animate-in fade-in-0"
+        onClick={() => onOpenChange(false)}
+      />
+      {/* Content */}
+      <div className="fixed inset-0 flex items-center justify-center p-4">
+        <div className="relative w-full h-full max-w-[95vw] max-h-[95vh] flex items-center justify-center">
           <Button
             variant="ghost"
             size="icon"
@@ -99,7 +140,8 @@ export function ImageZoomDialog({
             </>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>,
+    document.body
   )
 }

@@ -105,6 +105,18 @@ export class OrderDto {
   @ApiProperty({ example: 2 })
   itemCount: number;
 
+  @ApiPropertyOptional({ example: 'Jane Doe' })
+  shippingName?: string;
+
+  @ApiPropertyOptional({ example: '+254700000000' })
+  shippingPhone?: string;
+
+  @ApiPropertyOptional({ example: '123 Main St, Nairobi, 00100' })
+  shippingAddressSummary?: string;
+
+  @ApiPropertyOptional({ example: false })
+  shippingQuotePending?: boolean;
+
   @ApiPropertyOptional({ example: 'Leave at the door' })
   notesCustomer?: string;
 

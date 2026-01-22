@@ -82,7 +82,8 @@ export class PublicProductsController {
     @Query('priceListId') priceListId?: string,
     @Query('currencyCode') currencyCode?: string,
   ) {
-    const product = await this.productService.findOnePublic(id, {
+    const resolvedId = await this.productService.resolvePublicProductId(id);
+    const product = await this.productService.findOnePublic(resolvedId, {
       locale,
       priceListId,
       currencyCode,
@@ -93,6 +94,7 @@ export class PublicProductsController {
     );
   }
 
+
   @Get(':id/view')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOkResponse({ description: 'Public product view retrieved successfully' })
@@ -102,9 +104,10 @@ export class PublicProductsController {
     @Query() query: PublicProductViewQueryDto,
   ) {
     const user = (req as any).user as { id: string } | undefined;
+    const resolvedId = await this.productService.resolvePublicProductId(id);
 
     if (user?.id) {
-      await this.customerProductViewService.recordView(user.id, id);
+      await this.customerProductViewService.recordView(user.id, resolvedId);
     }
     const resolvedGroup = user?.id
       ? await this.customerGroupMembershipService.resolvePrimaryGroupForUser(user.id)
@@ -116,7 +119,7 @@ export class PublicProductsController {
       location: query.location,
       role: query.role,
     };
-    const product = await this.productService.findOnePublicView(id, {
+    const product = await this.productService.findOnePublicView(resolvedId, {
       locale: query.locale,
       priceListId: query.priceListId,
       currencyCode: query.currencyCode,
@@ -127,4 +130,5 @@ export class PublicProductsController {
       'Public product view retrieved successfully',
     );
   }
+
 }

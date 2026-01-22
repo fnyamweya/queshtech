@@ -23,6 +23,17 @@ export function CartPage({
   onApplyPromo,
 }: CartPageProps) {
   const [promoCode, setPromoCode] = useState('')
+  const cartCurrency = cart.items[0]?.product?.currency || ''
+
+  const formatMoney = (amount: number) => {
+    const hasCurrency = typeof cartCurrency === 'string' && cartCurrency.trim().length > 0
+    return new Intl.NumberFormat('en-KE', {
+      style: hasCurrency ? 'currency' : 'decimal',
+      currency: hasCurrency ? cartCurrency : undefined,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  }
 
   const handleApplyPromo = () => {
     if (promoCode.trim()) {
@@ -121,14 +132,14 @@ export function CartPage({
                     Subtotal ({cart.items.reduce((sum, item) => sum + item.quantity, 0)}{' '}
                     items)
                   </span>
-                  <Price price={cart.subtotal} currency="USD" size="sm" />
+                  <Price price={cart.subtotal} currency={cartCurrency} size="sm" />
                 </div>
 
                 {cart.discount > 0 && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Discount</span>
                     <span className="text-destructive font-medium">
-                      -<Price price={cart.discount} currency="USD" size="sm" />
+                      -<Price price={cart.discount} currency={cartCurrency} size="sm" />
                     </span>
                   </div>
                 )}
@@ -138,20 +149,20 @@ export function CartPage({
                   {cart.shipping === 0 ? (
                     <span className="text-primary font-medium text-sm">Free</span>
                   ) : (
-                    <Price price={cart.shipping} currency="USD" size="sm" />
+                    <Price price={cart.shipping} currency={cartCurrency} size="sm" />
                   )}
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Tax (estimated)</span>
-                  <Price price={cart.tax} currency="USD" size="sm" />
+                  <Price price={cart.tax} currency={cartCurrency} size="sm" />
                 </div>
 
                 <Separator />
 
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-lg">Total</span>
-                  <Price price={cart.total} currency="USD" size="lg" />
+                  <Price price={cart.total} currency={cartCurrency} size="lg" />
                 </div>
               </div>
 
@@ -164,7 +175,7 @@ export function CartPage({
 
               {cart.subtotal < 100 && (
                 <p className="text-xs text-center text-muted-foreground mt-4">
-                  Add ${(100 - cart.subtotal).toFixed(2)} more for free shipping
+                  Add {formatMoney(100 - cart.subtotal)} more for free shipping
                 </p>
               )}
             </Card>

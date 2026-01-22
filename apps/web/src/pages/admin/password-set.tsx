@@ -145,7 +145,7 @@ export function AdminPasswordSetPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Updating…' : 'Update Password'}
+              Update Password
             </Button>
 
             <Button type="button" variant="outline" className="w-full" onClick={() => setLocation('/axis/login')}>

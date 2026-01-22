@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, Loader2, Plus, RefreshCw, Send, Trash2, Wand2 } from 'lucide-react'
+import { CornerDownRight, Plus, RefreshCw, Send, Trash2, Wand2 } from 'lucide-react'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -676,11 +676,11 @@ export function AdminSettingsWhatsappTemplatesPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
-                  {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh
                 </Button>
                 <Button type="button" size="sm" onClick={onSyncFromMeta} disabled={isSyncing}>
-                  {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                  <Wand2 className="h-4 w-4 mr-2" />
                   Sync
                 </Button>
               </div>
@@ -728,9 +728,7 @@ export function AdminSettingsWhatsappTemplatesPage() {
 
             <ScrollArea className="h-[360px]">
               <div className="space-y-3 pr-3">
-                {isLoading ? (
-                  <div className="py-10 text-center text-sm text-muted-foreground">Loading templates…</div>
-                ) : templates.length === 0 ? (
+                {isLoading ? null : templates.length === 0 ? (
                   <div className="py-10 text-center text-sm text-muted-foreground">No templates found.</div>
                 ) : (
                   templates.map((t) => {
@@ -761,7 +759,7 @@ export function AdminSettingsWhatsappTemplatesPage() {
                               disabled={submittingId === t.id}
                               aria-label={`Submit ${t.name}`}
                             >
-                              {submittingId === t.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              <Send className="h-4 w-4" />
                             </Button>
                             <Button
                               type="button"

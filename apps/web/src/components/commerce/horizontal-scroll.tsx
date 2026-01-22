@@ -14,7 +14,8 @@ export function HorizontalScroll({ children, className, showControls = true }: H
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
-      const scrollAmount = 400
+      const viewport = scrollRef.current.clientWidth || 0
+      const scrollAmount = Math.max(240, Math.round(viewport * 0.85))
       const newPosition =
         scrollRef.current.scrollLeft + (direction === 'left' ? -scrollAmount : scrollAmount)
       scrollRef.current.scrollTo({ left: newPosition, behavior: 'smooth' })
@@ -28,7 +29,7 @@ export function HorizontalScroll({ children, className, showControls = true }: H
           <Button
             variant="outline"
             size="icon"
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-background/95 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-md bg-background/95 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
             onClick={() => scroll('left')}
             aria-label="Scroll left"
           >
@@ -37,7 +38,7 @@ export function HorizontalScroll({ children, className, showControls = true }: H
           <Button
             variant="outline"
             size="icon"
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-background/95 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-md bg-background/95 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
             onClick={() => scroll('right')}
             aria-label="Scroll right"
           >

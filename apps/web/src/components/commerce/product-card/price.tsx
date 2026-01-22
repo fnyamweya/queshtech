@@ -4,10 +4,11 @@ import { cn } from '@/lib/utils'
 import { Price } from '@/components/commerce/price'
 import type { ProductCardContext } from './types'
 
-function formatMoney(amount: number, currency: string) {
+function formatMoney(amount: number, currency?: string | null) {
+  const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
   return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: currency || 'KES',
+    style: hasCurrency ? 'currency' : 'decimal',
+    currency: hasCurrency ? currency : undefined,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
@@ -21,16 +22,17 @@ function savings(ctx: ProductCardContext<any>): { amount?: string; percent?: str
   const amount = compare - price
   const pct = Math.round((amount / compare) * 100)
   return {
-    amount: formatMoney(amount, ctx.currency || 'KES'),
+    amount: formatMoney(amount, ctx.currency),
     percent: Number.isFinite(pct) && pct > 0 ? `${pct}%` : undefined,
   }
 }
 
 export function ProductCardPrice<TProduct>({ ctx }: { ctx: ProductCardContext<TProduct> }): ReactNode {
-  const currency = ctx.currency || 'KES'
+  const currency = ctx.currency
   const price = ctx.price
   const compare = ctx.compareAtPrice
   if (typeof price !== 'number') return null
+  const dense = ctx.appearance.density === 'compact' || ctx.variant === 'compact'
 
   const mode = ctx.behavior.price.mode || (typeof compare === 'number' && compare > price ? 'discount' : 'simple')
   const showSavings = ctx.behavior.price.showSavings ?? false
@@ -52,15 +54,14 @@ export function ProductCardPrice<TProduct>({ ctx }: { ctx: ProductCardContext<TP
   return (
     <div className="space-y-1">
       <div className="flex items-end justify-between gap-2">
-        <Price price={price} compareAtPrice={compare || undefined} currency={currency} size={ctx.variant === 'compact' ? 'sm' : 'md'} />
+        <Price price={price} compareAtPrice={compare || undefined} currency={currency} size={dense ? 'sm' : 'md'} />
         {showSavings && (s.amount || s.percent) ? (
           <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-[11px]">
             Save {showSavings === 'amount' ? s.amount : showSavings === 'percent' ? s.percent : `${s.amount} • ${s.percent}`}
           </Badge>
         ) : null}
       </div>
-      {showExplanation ? <p className={cn('text-xs text-muted-foreground', ctx.variant === 'compact' ? 'leading-snug' : '')}>{ctx.behavior.price.explanation?.text}</p> : null}
+      {showExplanation ? <p className={cn('text-xs text-muted-foreground', dense ? 'leading-snug' : '')}>{ctx.behavior.price.explanation?.text}</p> : null}
     </div>
   )
 }
-

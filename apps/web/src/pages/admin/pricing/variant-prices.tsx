@@ -189,7 +189,7 @@ export function AdminVariantPricesPage() {
                   <CommandList>
                     <ScrollArea className="h-[320px]">
                       {variants.length === 0 ? (
-                        <CommandEmpty>{productsQuery.isLoading ? 'Loading…' : 'No variants found.'}</CommandEmpty>
+                        <CommandEmpty>No variants found.</CommandEmpty>
                       ) : null}
                       {variants.map((v) => {
                         const isSelected = v.variantId === selectedVariantId

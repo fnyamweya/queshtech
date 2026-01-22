@@ -33,6 +33,7 @@ export class PublicCollectionsController {
       const collections = await this.collectionService.listPublicCollections({
         type: query.type,
         isActive: query.isActive,
+        isHomepage: query.isHomepage,
         take: query.take,
         itemsLimit: query.limit,
       });

@@ -173,7 +173,7 @@ export function AdminProductsPage() {
                 {rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-sm text-muted-foreground">
-                      {productsQuery.isLoading ? 'Loading…' : 'No products found.'}
+                      No products found.
                     </TableCell>
                   </TableRow>
                 ) : null}

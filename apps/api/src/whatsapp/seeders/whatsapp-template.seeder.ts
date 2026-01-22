@@ -80,6 +80,37 @@ export class WhatsappTemplateSeeder {
             'Sent after customer registration completes successfully',
         },
       },
+      {
+        name: 'order_invoice_ready',
+        language: 'en_US',
+        category: 'UTILITY',
+        status: 'draft',
+        isActive: true,
+        componentsJson: [
+          {
+            type: 'BODY',
+            text: 'Hi {{1}}, your invoice for order {{2}} is ready. Amount: {{3}}. Pay now: {{4}}. PDF: {{5}}',
+          },
+        ],
+        defaultComponentsJson: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: 'Customer' },
+              { type: 'text', text: 'ORDER-12345' },
+              { type: 'text', text: 'KES 1,250' },
+              { type: 'text', text: 'https://example.com/pay/ORDER-12345' },
+              { type: 'text', text: 'https://example.com/invoice/ORDER-12345.pdf' },
+            ],
+          },
+        ],
+        metaJson: {
+          seededBy: 'WhatsappTemplateSeeder',
+          seedKey: 'order_invoice_ready',
+          seedVersion: 1,
+          description: 'Sent when an invoice is ready after shipping quote',
+        },
+      },
     ];
   }
 

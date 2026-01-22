@@ -251,10 +251,11 @@ const normalizeProfilePreferences = (raw: unknown): UserProfilePreferences => {
   }
 }
 
-function formatPrice(price: number) {
+function formatPrice(price: number, currency?: string | null) {
+  const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
   return new Intl.NumberFormat('en-KE', {
-    style: 'currency',
-    currency: 'KES',
+    style: hasCurrency ? 'currency' : 'decimal',
+    currency: hasCurrency ? currency : undefined,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(price)
@@ -418,7 +419,7 @@ export function ProfilePage() {
       <div className="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
         <div className="mb-6 sm:mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
               My Account
             </h1>
             <p className="text-muted-foreground mt-1">Manage orders, addresses, and preferences.</p>
@@ -473,13 +474,18 @@ export function ProfilePage() {
                     const Icon = s.icon
                     const isActive = section === s.id
                     return (
-                      <Link key={s.id} href={s.href}>
-                        <Button variant={isActive ? 'secondary' : 'ghost'} className="w-full justify-start gap-3">
+                      <Button
+                        key={s.id}
+                        asChild
+                        variant={isActive ? 'secondary' : 'ghost'}
+                        className="w-full justify-start gap-3 h-10 px-3"
+                      >
+                        <Link href={s.href}>
                           <Icon size={18} weight="bold" />
                           <span className="flex-1 text-left">{s.label}</span>
                           <CaretRight size={16} className={isActive ? 'opacity-100' : 'opacity-0'} />
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     )
                   })}
                 </nav>
@@ -678,7 +684,7 @@ function OverviewPanel({
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">
                   {new Date(order.date).toLocaleDateString('en-KE', { year: 'numeric', month: 'short', day: 'numeric' })} •{' '}
-                  {formatPrice(order.total)}
+                  {formatPrice(order.total, order.items?.[0]?.product?.currency)}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -804,7 +810,7 @@ function OrdersPanel({ orders, onViewOrder }: { orders: Order[]; onViewOrder: (o
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">
                       {new Date(order.date).toLocaleDateString('en-KE', { year: 'numeric', month: 'short', day: 'numeric' })} •{' '}
-                      {formatPrice(order.total)}
+                      {formatPrice(order.total, order.items?.[0]?.product?.currency)}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1029,7 +1035,7 @@ function WishlistPanel({
 }: {
   items: WishlistItem[]
   onRemove: (productId: string) => void
-  onAddToCart: (product: Product) => void
+  onAddToCart: (product: Product, variants?: Record<string, string>, quantity?: number, skuId?: string) => void
 }) {
   const [sort, setSort] = useState<'newest' | 'oldest' | 'price-asc' | 'price-desc'>('newest')
 
@@ -1099,7 +1105,7 @@ function WishlistPanel({
                         </div>
                       </div>
                       <div className="text-right font-semibold whitespace-nowrap">
-                        {new Intl.NumberFormat('en-KE', { style: 'currency', currency: p.currency || 'KES', maximumFractionDigits: 0 }).format(p.price)}
+                        {formatPrice(p.price, p.currency)}
                       </div>
                     </div>
 

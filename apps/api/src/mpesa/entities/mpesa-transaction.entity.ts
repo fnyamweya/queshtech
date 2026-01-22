@@ -14,6 +14,7 @@ export enum MpesaTransactionType {
   C2B = 'c2b',
   B2C = 'b2c',
   B2B = 'b2b',
+  STK = 'stk',
 }
 
 export enum MpesaTransactionStatus {

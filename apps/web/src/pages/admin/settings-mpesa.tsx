@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, CreditCard, Link2, Loader2, ShieldCheck, TestTube2, Wallet } from 'lucide-react'
+import { CornerDownRight, CreditCard, Link2, ShieldCheck, TestTube2, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Badge } from '@/components/ui/badge'
@@ -188,11 +188,7 @@ export function AdminSettingsMpesaPage() {
                           }
                           disabled={isSubmitting || !c2bShortCode.trim()}
                         >
-                          {isSubmitting && lastAction === 'C2B Register URLs' ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <ShieldCheck className="h-4 w-4 mr-2" />
-                          )}
+                          <ShieldCheck className="h-4 w-4 mr-2" />
                           Register URLs
                         </Button>
                       </div>
@@ -261,11 +257,7 @@ export function AdminSettingsMpesaPage() {
                           }
                           disabled={isSubmitting || !simShortCode.trim() || !simAmount.trim() || !simMsisdn.trim() || !simBillRef.trim()}
                         >
-                          {isSubmitting && lastAction === 'C2B Simulate' ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <TestTube2 className="h-4 w-4 mr-2" />
-                          )}
+                          <TestTube2 className="h-4 w-4 mr-2" />
                           Run simulation
                         </Button>
                       </div>
@@ -373,11 +365,7 @@ export function AdminSettingsMpesaPage() {
                           }
                           disabled={isSubmitting || !b2cAmount.trim() || !b2cPartyB.trim() || !b2cRemarks.trim()}
                         >
-                          {isSubmitting && lastAction === 'B2C Payment' ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <CreditCard className="h-4 w-4 mr-2" />
-                          )}
+                          <CreditCard className="h-4 w-4 mr-2" />
                           Initiate B2C
                         </Button>
                       </div>
@@ -485,11 +473,7 @@ export function AdminSettingsMpesaPage() {
                           }
                           disabled={isSubmitting || !b2bAmount.trim() || !b2bPartyB.trim() || !b2bAccountRef.trim() || !b2bRemarks.trim()}
                         >
-                          {isSubmitting && lastAction === 'B2B Payment' ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Wallet className="h-4 w-4 mr-2" />
-                          )}
+                          <Wallet className="h-4 w-4 mr-2" />
                           Initiate B2B
                         </Button>
                       </div>
@@ -510,7 +494,6 @@ export function AdminSettingsMpesaPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">{lastAction ? lastAction : 'Idle'}</Badge>
-                {isSubmitting ? <Badge>Running…</Badge> : null}
               </div>
               <Textarea readOnly value={lastResponse} placeholder="Responses will appear here…" className="min-h-[320px] font-mono text-xs" />
               <p className="text-xs text-muted-foreground">

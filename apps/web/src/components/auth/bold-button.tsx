@@ -17,20 +17,23 @@ export function BoldButton({
   disabled,
   ...props
 }: BoldButtonProps) {
-  const baseStyles = 'relative w-full h-12 font-semibold text-base transition-all duration-200 flex items-center justify-center gap-2.5 overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed'
+  const baseStyles =
+    'relative w-full h-12 rounded-md font-semibold text-base transition-[transform,box-shadow,background-color,color,border-color,opacity] duration-200 flex items-center justify-center gap-2.5 overflow-hidden group cursor-pointer select-none disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none active:translate-y-px active:scale-[0.99]'
   
   const variantStyles = {
-    primary: 'bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98] shadow-lg hover:shadow-xl',
-    secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 active:scale-[0.98]',
-    outline: 'border-2 border-border bg-transparent text-foreground hover:bg-secondary active:scale-[0.98]',
-    google: 'border-2 border-border bg-white text-foreground hover:bg-gray-50 active:scale-[0.98]'
+    primary:
+      'bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:bg-[color-mix(in_oklab,var(--color-primary)_88%,black)] dark:hover:bg-[color-mix(in_oklab,var(--color-primary)_88%,white)]',
+    secondary:
+      'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklab,var(--color-secondary)_88%,black)] dark:hover:bg-[color-mix(in_oklab,var(--color-secondary)_88%,white)]',
+    outline: 'border-2 border-border bg-transparent text-foreground hover:bg-muted',
+    google:
+      'border-2 border-border bg-background text-foreground hover:bg-muted dark:bg-input/30 dark:hover:bg-input/45'
   }
 
   return (
     <button
       className={cn(baseStyles, variantStyles[variant], className)}
       disabled={disabled || isLoading}
-      style={{ borderRadius: 0 }}
       {...props}
     >
       {isLoading ? (

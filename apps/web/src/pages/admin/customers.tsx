@@ -149,14 +149,6 @@ export function AdminCustomersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoading && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-muted-foreground">
-                    Loading customers…
-                  </TableCell>
-                </TableRow>
-              )}
-
               {!isLoading && filteredCustomers.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-muted-foreground">

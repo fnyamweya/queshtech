@@ -126,7 +126,23 @@ A comprehensive, production-ready NestJS template with TypeORM, featuring authen
 
 4. **Database Setup**
 
-Create your PostgreSQL database and run the application. TypeORM will automatically create tables based on your entities.
+Create your PostgreSQL database and run migrations (recommended). Avoid relying on `DB_SYNC=true` for anything beyond quick prototyping.
+
+```bash
+# Apply schema changes
+npm run db:migrate
+
+# Seed realistic local data
+npm run db:seed
+```
+
+Useful env flags:
+
+- `DB_SYNC=false` (recommended): prevents TypeORM from auto-mutating the schema at runtime.
+- `DB_MIGRATIONS_RUN=true|false`: controls whether migrations auto-run on app startup.
+- `DB_LOGGING=true`: enables verbose SQL logging (off by default).
+
+If you previously ran with `DB_SYNC=true` and your schema drifted, the fastest fix is usually to drop/recreate the local database, then run `npm run db:migrate` and `npm run db:seed` again.
 
 5. **Start the application**
 

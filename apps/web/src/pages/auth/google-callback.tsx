@@ -4,9 +4,8 @@ import { Link } from 'wouter'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { AuthShell } from '@/components/auth/auth-shell'
-import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { AuthNotice } from '@/components/auth/auth-helpers'
 import { apiRequest, ApiError, extractAccessToken, extractRefreshToken } from '@/lib/api'
 import { endpoints } from '@/lib/endpoints'
 import { ArrowRight, House, ShieldWarning, WarningCircle } from '@phosphor-icons/react'
@@ -96,12 +95,21 @@ function extractRoleFromProfile(profilePayload: any): string {
 
 type Phase = 'init' | 'exchange' | 'validate' | 'profile' | 'redirect'
 
+const phaseProgress: Record<Phase, { min: number; max: number; label: string }> = {
+  init: { min: 6, max: 18, label: 'Preparing session' },
+  exchange: { min: 18, max: 42, label: 'Secure exchange' },
+  validate: { min: 42, max: 62, label: 'Validating access' },
+  profile: { min: 62, max: 84, label: 'Loading profile' },
+  redirect: { min: 84, max: 99, label: 'Redirecting' },
+}
+
 export function GoogleOAuthCallbackPage() {
   const [status, setStatus] = useState<'working' | 'error' | 'denied'>('working')
   const [message, setMessage] = useState('Completing Google sign-in…')
   const [errorCode, setErrorCode] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('init')
   const [oauthKey, setOauthKey] = useState<'customer' | 'axis'>('customer')
+  const [progressValue, setProgressValue] = useState(phaseProgress.init.min)
 
   const { searchParams } = useMemo(() => {
     const raw = typeof window === 'undefined' ? '' : window.location.search
@@ -271,6 +279,17 @@ export function GoogleOAuthCallbackPage() {
     }
   }, [searchParams])
 
+  useEffect(() => {
+    if (status !== 'working') return
+
+    const { min, max } = phaseProgress[phase]
+    setProgressValue((prev) => {
+      if (prev < min) return min
+      if (prev > max) return max
+      return prev
+    })
+  }, [phase, status])
+
   const isAdmin = oauthKey === 'axis'
   const title =
     status === 'working'
@@ -285,9 +304,7 @@ export function GoogleOAuthCallbackPage() {
       : isAdmin
         ? 'Your Google account could not be authenticated for Axis.'
         : 'Your Google account could not be authenticated.'
-
-  const progressValue =
-    phase === 'init' ? 18 : phase === 'exchange' ? 38 : phase === 'validate' ? 58 : phase === 'profile' ? 72 : 92
+  const progressMeta = phaseProgress[phase]
 
   return (
     <AuthShell title={title} description={description}>
@@ -295,20 +312,11 @@ export function GoogleOAuthCallbackPage() {
         {status === 'working' ? (
           <>
             <AuthNotice className="flex items-start gap-3">
-              <AuthSpinner className="mt-0.5" />
               <div className="min-w-0">
                 <div className="text-sm font-semibold">Please wait</div>
                 <div className="text-sm text-muted-foreground">{message}</div>
               </div>
             </AuthNotice>
-
-            <div className="grid gap-2">
-              <Progress value={progressValue} />
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Secure exchange</span>
-                <span>{Math.min(99, Math.max(5, progressValue))}%</span>
-              </div>
-            </div>
 
             <Button asChild variant="outline" className="h-11 w-full">
               <Link href="/">

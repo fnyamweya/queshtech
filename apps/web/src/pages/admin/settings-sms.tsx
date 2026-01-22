@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, Loader2, Save, Send } from 'lucide-react'
+import { CornerDownRight, Save, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Button } from '@/components/ui/button'
@@ -144,7 +144,7 @@ export function AdminSettingsSmsPage() {
 
             <div className="flex items-center justify-end">
               <Button onClick={onSave} disabled={isSaving}>
-                {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                <Save className="h-4 w-4 mr-2" />
                 Save settings
               </Button>
             </div>
@@ -170,7 +170,7 @@ export function AdminSettingsSmsPage() {
 
               <div className="flex items-center justify-end">
                 <Button variant="outline" onClick={onSimulate} disabled={isSimulating || !testTo.trim() || !testMessage.trim()}>
-                  {isSimulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                  <Send className="h-4 w-4 mr-2" />
                   Send test
                 </Button>
               </div>

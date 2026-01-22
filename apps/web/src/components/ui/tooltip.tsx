@@ -1,4 +1,4 @@
-import { ComponentProps } from "react"
+import { ComponentProps, ComponentPropsWithoutRef, ElementRef, forwardRef } from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 
 import { cn } from "@/lib/utils"
@@ -26,11 +26,14 @@ function Tooltip({
   )
 }
 
-function TooltipTrigger({
-  ...props
-}: ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
-}
+const TooltipTrigger = forwardRef<
+  ElementRef<typeof TooltipPrimitive.Trigger>,
+  ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+>((props, ref) => {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" ref={ref} {...props} />
+})
+
+TooltipTrigger.displayName = "TooltipTrigger"
 
 function TooltipContent({
   className,

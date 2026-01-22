@@ -6,7 +6,6 @@ import { Footer } from '@/components/layout/footer'
 import { GoogleOAuthCallbackPage } from '@/pages/auth/google-callback'
 import { MobileNav } from '@/components/layout/mobile-nav'
 import { SearchCommand } from '@/components/layout/search-command'
-import { NotificationBanner } from '@/components/layout/notification-banner'
 import { InteractiveTopBar } from '@/components/layout/interactive-top-bar'
 import { CookieConsent } from '@/components/layout/cookie-consent'
 import { ScrollToTop } from '@/components/layout/scroll-to-top'
@@ -42,6 +41,7 @@ import { AdminSettingsPage } from '@/pages/admin/settings'
 import { AdminSettingsLocationsPage } from '@/pages/admin/settings-locations'
 import { AdminSettingsCurrenciesPage } from '@/pages/admin/settings-currencies'
 import { AdminSettingsMpesaPage } from '@/pages/admin/settings-mpesa'
+import { AdminSettingsPaymentsPage } from '@/pages/admin/settings-payments'
 import { AdminSettingsRolesPage } from '@/pages/admin/settings-roles'
 import { AdminSettingsWhatsappPage } from '@/pages/admin/settings-whatsapp'
 import { AdminSettingsWhatsappTemplatesPage } from '@/pages/admin/settings-whatsapp-templates'
@@ -59,6 +59,9 @@ import { AdminCategoryEditPage } from '@/pages/admin/category-edit'
 import { AdminCategoryViewPage } from '@/pages/admin/category-view'
 import { AdminShippingPage } from '@/pages/admin/shipping'
 import { AdminShippingZonePage } from '@/pages/admin/shipping-zone'
+import { AdminShippingProvidersPage } from '@/pages/admin/shipping-providers'
+import { AdminShippingMethodsPage } from '@/pages/admin/shipping-methods'
+import { PayOrderPage } from '@/pages/pay-order'
 import { AdminGoogleAuthCallbackPage } from '@/pages/admin/auth-google-callback'
 import { AdminPriceListsPage } from '@/pages/admin/pricing/price-lists'
 import { AdminVariantPricesPage } from '@/pages/admin/pricing/variant-prices'
@@ -67,6 +70,7 @@ import { useCart } from '@/hooks/use-cart'
 import { toast } from 'sonner'
 import { AuthProvider } from '@/hooks/use-auth'
 import { AdminAuthProvider } from '@/hooks/use-admin-auth'
+import { DebugErrorBoundary } from '@/components/common/debug-error-boundary'
 
 function App() {
   const [isCartOpen, setIsCartOpen] = useState(false)
@@ -88,7 +92,7 @@ function App() {
     })
   }
 
-  return (
+  const appContent = (
     <AdminAuthProvider>
       {isAdminRoute ? (
         <>
@@ -107,21 +111,6 @@ function App() {
             </Route>
             <Route path="/axis/dashboard">
               <AdminDashboardPage />
-            </Route>
-            <Route path="/axis/products">
-              <AdminProductsPage />
-            </Route>
-            <Route path="/axis/products/add">
-              <AdminProductAddPage />
-            </Route>
-            <Route path="/axis/products/:id/edit">
-              <AdminProductEditPage />
-            </Route>
-            <Route path="/axis/products/:id">
-              <AdminProductViewPage />
-            </Route>
-            <Route path="/axis/orders">
-              <AdminOrdersPage />
             </Route>
             <Route path="/axis/orders/:id">
               <AdminOrderDetailPage />
@@ -147,6 +136,18 @@ function App() {
             <Route path="/axis/brands">
               <AdminBrandsPage />
             </Route>
+            <Route path="/axis/products/add">
+              <AdminProductAddPage />
+            </Route>
+            <Route path="/axis/products/:id/edit">
+              <AdminProductEditPage />
+            </Route>
+            <Route path="/axis/products/:id">
+              <AdminProductViewPage />
+            </Route>
+            <Route path="/axis/products">
+              <AdminProductsPage />
+            </Route>
             <Route path="/axis/categories/add">
               <AdminCategoryAddPage />
             </Route>
@@ -170,6 +171,9 @@ function App() {
             </Route>
             <Route path="/axis/settings/mpesa">
               <AdminSettingsMpesaPage />
+            </Route>
+            <Route path="/axis/settings/payments">
+              <AdminSettingsPaymentsPage />
             </Route>
             <Route path="/axis/settings/roles">
               <AdminSettingsRolesPage />
@@ -198,6 +202,12 @@ function App() {
             <Route path="/axis/shipping">
               <AdminShippingPage />
             </Route>
+            <Route path="/axis/shipping/providers">
+              <AdminShippingProvidersPage />
+            </Route>
+            <Route path="/axis/shipping/methods">
+              <AdminShippingMethodsPage />
+            </Route>
             <Route path="/axis/shipping/:zoneId/:tab?">
               <AdminShippingZonePage />
             </Route>
@@ -224,16 +234,8 @@ function App() {
         </>
       ) : (
         <AuthProvider>
-          <div className="flex flex-col min-h-screen">
+          <div className="min-h-screen flex flex-col">
             <InteractiveTopBar />
-
-            <NotificationBanner
-              id="free-shipping-2024"
-              message="Free shipping on orders over KES 10,000 • Use code: FREESHIP"
-              type="promo"
-              action={{ label: 'Shop Now', href: '/' }}
-            />
-
             <Header
               cartItemCount={itemCount}
               onCartClick={() => setIsCartOpen(true)}
@@ -245,6 +247,9 @@ function App() {
               <Switch>
                 <Route path="/">
                   <HomePage onAddToCart={addToCart} />
+                </Route>
+                <Route path="/pay/:orderId">
+                  <PayOrderPage />
                 </Route>
                 <Route path="/search">
                   <SearchPage onAddToCart={addToCart} />
@@ -333,6 +338,12 @@ function App() {
       )}
     </AdminAuthProvider>
   )
+
+  if (import.meta.env.DEV) {
+    return <DebugErrorBoundary>{appContent}</DebugErrorBoundary>
+  }
+
+  return appContent
 }
 
 export default App

@@ -8,10 +8,14 @@ import { Separator } from '@/components/ui/separator'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, CheckCircle2, Truck, Clock, ReceiptText, Pencil, Plus, Trash2, CreditCard, RefreshCw, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GoogleMapDemo } from '@/components/admin/google-map-demo'
+import { useAdminAuth } from '@/hooks/use-admin-auth'
+import { endpoints } from '@/lib/endpoints'
+import { toast } from 'sonner'
 
 const statusColors = {
   completed: 'bg-neon-green/10 text-neon-green border-neon-green/20',
@@ -172,6 +176,7 @@ const transactionData = [
 export function AdminOrderDetailPage() {
   const [, params] = useRoute('/axis/orders/:id')
   const [, setLocation] = useLocation()
+  const { authorizedRequest } = useAdminAuth()
   const order = useMemo(() => orderData.find((o) => o.id === params?.id), [params])
   const [items, setItems] = useState<OrderItem[]>(order ? order.items : [])
   const [shipping, setShipping] = useState({
@@ -182,16 +187,77 @@ export function AdminOrderDetailPage() {
   })
   const [transactions, setTransactions] = useState(transactionData)
   const [paymentDraft, setPaymentDraft] = useState({ amount: '', method: '', reference: '' })
+  const [quoteDraft, setQuoteDraft] = useState({ amount: '', note: '' })
+  const [isSubmittingQuote, setIsSubmittingQuote] = useState(false)
   const parsedOrderTotal = Number(order?.total.replace(/[^\d.]/g, '') || 0)
   const transactionTotal = transactions.reduce((sum, txn) => sum + Number(String(txn.amount).replace(/[^\d.]/g, '') || 0), 0)
   const isBalanced = parsedOrderTotal > 0 && Math.abs(parsedOrderTotal - transactionTotal) < 0.01
 
+  const submitShippingQuote = async () => {
+    const orderId = params?.id
+    if (!orderId) return
+    const amount = Number(quoteDraft.amount)
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error('Enter a valid quote amount')
+      return
+    }
+
+    setIsSubmittingQuote(true)
+    try {
+      await authorizedRequest(endpoints.orders.shippingQuote(orderId), {
+        method: 'POST',
+        body: {
+          amount,
+          note: quoteDraft.note.trim() || undefined,
+        },
+      })
+      toast.success('Shipping quote sent', { description: 'Customer notifications dispatched.' })
+      setQuoteDraft({ amount: '', note: '' })
+    } catch (e: any) {
+      toast.error('Failed to send quote', { description: e?.message || 'Please try again.' })
+    } finally {
+      setIsSubmittingQuote(false)
+    }
+  }
+
   if (!order) {
     return (
       <AdminLayout title="Order not found">
-        <div className="rounded-lg border bg-card p-6">
-          <p className="text-muted-foreground">No order matches this ID.</p>
-          <Button className="mt-4" onClick={() => setLocation('/axis/orders')}>Back to orders</Button>
+        <div className="space-y-4">
+          <div className="rounded-lg border bg-card p-6">
+            <p className="text-muted-foreground">No order matches this ID.</p>
+            <Button className="mt-4" onClick={() => setLocation('/axis/orders')}>Back to orders</Button>
+          </div>
+
+          {params?.id ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Send shipping quote</CardTitle>
+                <CardDescription>Enter the negotiated shipping amount to generate the invoice.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Quote amount</Label>
+                  <Input
+                    placeholder="0.00"
+                    value={quoteDraft.amount}
+                    onChange={(e) => setQuoteDraft((prev) => ({ ...prev, amount: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Note (optional)</Label>
+                  <Textarea
+                    placeholder="Courier estimate or instructions"
+                    value={quoteDraft.note}
+                    onChange={(e) => setQuoteDraft((prev) => ({ ...prev, note: e.target.value }))}
+                  />
+                </div>
+                <Button onClick={submitShippingQuote} disabled={isSubmittingQuote}>
+                  {isSubmittingQuote ? 'Sending…' : 'Send quote'}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </AdminLayout>
     )

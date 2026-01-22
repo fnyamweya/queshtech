@@ -11,7 +11,7 @@ import { ResponseUtil } from 'src/common/utils/response.util';
 import { ProductReviewService } from '../../services/product-review.service';
 import { ListProductReviewsQueryDto } from '../../dto/product-review.dto';
 
-@Controller('public/catalog/products')
+@Controller('public/catalog/products/:productId/reviews')
 @ApiTags('Public Catalog: Product Reviews')
 @UsePipes(
   new ValidationPipe({
@@ -23,7 +23,7 @@ import { ListProductReviewsQueryDto } from '../../dto/product-review.dto';
 export class PublicProductReviewsController {
   constructor(private readonly productReviewService: ProductReviewService) {}
 
-  @Get(':productId/rating-summary')
+  @Get('summary')
   @ApiOperation({ summary: 'Get product rating summary' })
   @ApiOkResponse({ description: 'Product rating summary retrieved successfully' })
   async ratingSummary(@Param('productId') productId: string) {
@@ -31,7 +31,7 @@ export class PublicProductReviewsController {
     return ResponseUtil.success(summary, 'Product rating summary retrieved successfully');
   }
 
-  @Get(':productId/reviews')
+  @Get()
   @ApiOperation({ summary: 'List approved product reviews' })
   @ApiOkResponse({ description: 'Product reviews retrieved successfully' })
   async list(

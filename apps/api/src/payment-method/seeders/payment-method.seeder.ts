@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { PaymentMethod } from '../entities/payment-method.entity';
+import { PaymentMethod, PaymentMethodStatus } from '../entities/payment-method.entity';
 import { PaymentProvider } from 'src/payment-provider/entities/payment-provider.entity';
 import { Channel } from 'src/channels/entities/channel.entity';
 import { PaymentMethodChannel } from '../entities/payment-method-channel.entity';
@@ -16,6 +16,7 @@ type SeedPaymentMethod = {
   name: string;
   description?: string;
   isActive?: boolean;
+  status?: PaymentMethodStatus;
   channelCodes?: string[];
   countryCodes?: string[];
   currencyCodes?: string[];
@@ -168,6 +169,7 @@ export class PaymentMethodSeeder {
         name: 'M-Pesa',
         description: 'Safaricom M-Pesa mobile money',
         isActive: true,
+        status: PaymentMethodStatus.ACTIVE,
         channelCodes: ['WEB', 'MOBILE', 'WHATSAPP'],
         countryCodes: ['KE'],
         currencyCodes: ['KES'],
@@ -191,6 +193,7 @@ export class PaymentMethodSeeder {
         name: 'Cash',
         description: 'Cash payments (in-person or on delivery)',
         isActive: true,
+        status: PaymentMethodStatus.ACTIVE,
         channelCodes: ['WEB', 'MOBILE', 'WHATSAPP'],
         configJson: {
           kind: 'CASH',
@@ -204,6 +207,7 @@ export class PaymentMethodSeeder {
         name: 'Bank Transfer',
         description: 'Manual bank transfer (offline verification)',
         isActive: true,
+        status: PaymentMethodStatus.ACTIVE,
         channelCodes: ['WEB', 'MOBILE', 'WHATSAPP'],
         configJson: {
           kind: 'BANK_TRANSFER',
@@ -220,11 +224,40 @@ export class PaymentMethodSeeder {
         name: 'Card',
         description: 'Card payments (Visa/Mastercard)',
         isActive: true,
+        status: PaymentMethodStatus.ACTIVE,
         channelCodes: ['WEB', 'MOBILE', 'WHATSAPP'],
         configJson: {
           kind: 'CARD',
         },
         metadata: { seededBy: 'PaymentMethodSeeder', seedKey: 'card-gateway' },
+      },
+      {
+        code: 'PAYSTACK',
+        providerCode: 'PAYSTACK',
+        name: 'Paystack',
+        description: 'Paystack card and mobile money payments',
+        isActive: true,
+        status: PaymentMethodStatus.ACTIVE,
+        channelCodes: ['WEB', 'MOBILE'],
+        configJson: {
+          kind: 'PAYSTACK',
+          integration: { module: 'paystack' },
+        },
+        metadata: { seededBy: 'PaymentMethodSeeder', seedKey: 'paystack' },
+      },
+      {
+        code: 'TINGG',
+        providerCode: 'CELLULANT',
+        name: 'Tingg',
+        description: 'Cellulant Tingg payments',
+        isActive: true,
+        status: PaymentMethodStatus.ACTIVE,
+        channelCodes: ['WEB', 'MOBILE'],
+        configJson: {
+          kind: 'TINGG',
+          integration: { module: 'tingg' },
+        },
+        metadata: { seededBy: 'PaymentMethodSeeder', seedKey: 'tingg' },
       },
     ];
   }
@@ -250,7 +283,12 @@ export class PaymentMethodSeeder {
           providerId: provider.id,
           name: method.name,
           description: method.description,
-          isActive: method.isActive ?? true,
+          status: method.status ?? PaymentMethodStatus.ACTIVE,
+          isActive:
+            typeof method.isActive === 'boolean'
+              ? method.isActive
+              : (method.status ?? PaymentMethodStatus.ACTIVE) ===
+                PaymentMethodStatus.ACTIVE,
           configJson: method.configJson ?? {},
           metadata: method.metadata ?? {},
         }),
@@ -276,6 +314,12 @@ export class PaymentMethodSeeder {
     existing.providerId = provider.id;
     existing.name = method.name;
     existing.description = method.description;
+    if (typeof method.status !== 'undefined') {
+      existing.status = method.status;
+      if (typeof method.isActive === 'undefined') {
+        existing.isActive = method.status === PaymentMethodStatus.ACTIVE;
+      }
+    }
     existing.isActive = method.isActive ?? existing.isActive;
     if (typeof method.configJson !== 'undefined')
       existing.configJson = method.configJson ?? {};

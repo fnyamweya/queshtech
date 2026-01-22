@@ -1,5 +1,5 @@
 import { Link } from 'wouter'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/commerce/product-card'
@@ -13,7 +13,6 @@ import { resolvePhosphorIcon } from '@/lib/phosphor'
 import { usePublicCategories } from '@/hooks/use-catalog-categories'
 import { CategoryCard } from '@/components/commerce/category-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
 import { BannerCard } from '@/components/commerce/home/banner-card'
 import { HeroOverlapGrid } from '@/components/commerce/home/hero-overlap-grid'
 import { SectionHeading } from '@/components/commerce/home/section-heading'
@@ -29,15 +28,20 @@ import {
 } from '@phosphor-icons/react'
 
 interface HomePageProps {
-  onAddToCart: (product: Product) => void
+  onAddToCart: (product: Product, variants?: Record<string, string>, quantity?: number, skuId?: string) => void
 }
 
 export function HomePage({ onAddToCart }: HomePageProps) {
+  return <StaticHomePageContent onAddToCart={onAddToCart} />
+}
+
+function StaticHomePageContent({ onAddToCart }: HomePageProps) {
   const container = 'container mx-auto px-4 sm:px-6 lg:px-10 max-w-[1400px]'
 
   const { landingCollections, isLoading: isCollectionsLoading } = usePublicCollections({ limit: 12 })
-  const { heroBanners, featureBanners, isLoading: isBannersLoading } = usePublicBanners()
+  const { heroBanners, featureBanners } = usePublicBanners()
   const { categories, isLoading: isCategoriesLoading } = usePublicCategories({ limit: 8, isActive: true })
+
 
   const heroSlides: FuturisticHeroSlide[] = heroBanners
     .filter((banner) => banner.creative?.imageKey || banner.imageUrl)
@@ -111,12 +115,40 @@ export function HomePage({ onAddToCart }: HomePageProps) {
   const orphanBanners = useMemo(() => featureBanners.filter((b) => !b.landingSection), [featureBanners])
   const highlightBanners = useMemo(() => orphanBanners.slice(0, 3), [orphanBanners])
 
+  const valueProps = [
+    {
+      icon: <Truck size={16} weight="bold" className="text-primary" />,
+      label: 'Fast delivery',
+      sub: 'Same-day Nairobi • Nationwide shipping',
+      bg: 'bg-primary/10',
+    },
+    {
+      icon: <ShieldCheck size={16} weight="bold" className="text-success" />,
+      label: 'Secure payments',
+      sub: 'M-Pesa, cards & wallets',
+      bg: 'bg-success/10',
+    },
+    {
+      icon: <ArrowsCounterClockwise size={16} weight="bold" className="text-accent" />,
+      label: 'Easy returns',
+      sub: '30-day return window',
+      bg: 'bg-accent/10',
+    },
+    {
+      icon: <Headset size={16} weight="bold" className="text-cyber-cyan" />,
+      label: 'Real support',
+      sub: 'Chat, call or WhatsApp',
+      bg: 'bg-cyber-cyan/10',
+    },
+  ] as const
+
   return (
     <div className="flex flex-col">
       <section className="relative w-full">
         <FuturisticHero slides={heroSlides.length > 0 ? heroSlides : undefined} />
 
-        <div className={container + ' relative -mt-24 sm:-mt-28 lg:-mt-32 pb-8'}>
+        <div className={container + ' relative -mt-32 sm:-mt-32 lg:-mt-36 pb-8'}>
+          <div className="sm:hidden pointer-events-none absolute inset-x-0 top-0 z-40 flex justify-center -translate-y-full" />
           <HeroOverlapGrid
             categories={categories}
             isCategoriesLoading={isCategoriesLoading}
@@ -126,45 +158,20 @@ export function HomePage({ onAddToCart }: HomePageProps) {
             isLoading={isCollectionsLoading}
           />
         </div>
-        {isBannersLoading ? (
-          <div className="sr-only" aria-live="polite">
-            Loading hero…
-          </div>
-        ) : null}
       </section>
 
       <section className="border-y border-[color:var(--color-border)] bg-[color:var(--color-muted)] py-8">
         <div className={container}>
-          <div className="grid gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              {
-                icon: <Truck size={16} weight="bold" className="text-primary" />,
-                label: 'Fast delivery',
-                sub: 'Same-day Nairobi • Nationwide shipping',
-                bg: 'bg-primary/10',
-              },
-              {
-                icon: <ShieldCheck size={16} weight="bold" className="text-success" />,
-                label: 'Secure payments',
-                sub: 'M-Pesa, cards & wallets',
-                bg: 'bg-success/10',
-              },
-              {
-                icon: <ArrowsCounterClockwise size={16} weight="bold" className="text-accent" />,
-                label: 'Easy returns',
-                sub: '30-day return window',
-                bg: 'bg-accent/10',
-              },
-              {
-                icon: <Headset size={16} weight="bold" className="text-cyber-cyan" />,
-                label: 'Real support',
-                sub: 'Chat, call or WhatsApp',
-                bg: 'bg-cyber-cyan/10',
-              },
-            ].map((item) => (
-              <div key={item.label} className="rounded-xl border border-border bg-background/60 p-4">
+          <div className="flex gap-3 sm:gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory sm:grid sm:snap-none sm:overflow-visible sm:grid-cols-2 lg:grid-cols-4">
+            {valueProps.map((item) => (
+              <div
+                key={item.label}
+                className="w-[240px] sm:w-auto flex-shrink-0 snap-start rounded-xl border border-border bg-background/60 p-3 sm:p-4"
+              >
                 <div className="flex items-start gap-3">
-                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${item.bg}`}>{item.icon}</div>
+                  <div className={`h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center ${item.bg}`}>
+                    {item.icon}
+                  </div>
                   <div className="space-y-1">
                     <p className="text-sm font-semibold">{item.label}</p>
                     <p className="text-xs text-muted-foreground">{item.sub}</p>
@@ -184,20 +191,36 @@ export function HomePage({ onAddToCart }: HomePageProps) {
           action={{ label: 'Explore all', href: '/category/all' }}
         />
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6">
           {isCategoriesLoading ? (
-            Array.from({ length: 8 }).map((_, idx) => (
-              <div key={idx} className="rounded-xl border border-border overflow-hidden">
-                <Skeleton className="aspect-[4/3] w-full" />
-              </div>
-            ))
+            <HorizontalScroll showControls={false} className="[&>*]:w-[140px] [&>*]:sm:w-[170px] [&>*]:lg:w-[190px]">
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="aspect-[4/3] rounded-xl border border-border bg-muted/30 animate-pulse"
+                />
+              ))}
+            </HorizontalScroll>
           ) : categories.length === 0 ? (
-            <div className="col-span-full rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
+            <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
               No categories available yet.
             </div>
           ) : (
-            categories.slice(0, 8).map((category) => <CategoryCard key={category.id} category={category} />)
+            <HorizontalScroll className="[&>*]:w-[140px] [&>*]:sm:w-[170px] [&>*]:lg:w-[190px]">
+              {categories.slice(0, 8).map((category) => (
+                <CategoryCard key={category.id} category={category} size="compact" />
+              ))}
+            </HorizontalScroll>
           )}
+        </div>
+
+        <div className="mt-6 sm:hidden">
+          <Button asChild variant="outline" className="w-full bg-background/70 hover:bg-background">
+            <Link href="/category/all">
+              Explore all categories
+              <ArrowRight size={14} weight="bold" className="ml-2" />
+            </Link>
+          </Button>
         </div>
       </section>
 
@@ -209,7 +232,7 @@ export function HomePage({ onAddToCart }: HomePageProps) {
             description="Limited-time campaigns and seasonal launches—updated regularly."
             action={{ label: 'Shop deals', href: '/category/all' }}
           />
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {highlightBanners.map((banner) => (
               <BannerCard key={banner.id} banner={banner} />
             ))}
@@ -241,26 +264,13 @@ export function HomePage({ onAddToCart }: HomePageProps) {
               ] as const
             ).map((tab) => (
               <TabsContent key={tab.key} value={tab.key} className="mt-6">
-                {isCollectionsLoading ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    {Array.from({ length: 6 }).map((_, idx) => (
-                      <div key={idx} className="rounded-xl border border-border overflow-hidden">
-                        <Skeleton className="aspect-square w-full" />
-                        <div className="p-3 space-y-2">
-                          <Skeleton className="h-3 w-16" />
-                          <Skeleton className="h-4 w-full" />
-                          <Skeleton className="h-4 w-2/3" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : tab.items.length === 0 ? (
+                {isCollectionsLoading ? null : tab.items.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
                     No products to show yet.
                   </div>
                 ) : (
                   <>
-                    <HorizontalScroll className="[&>*]:w-[190px] [&>*]:sm:w-[220px]">
+                    <HorizontalScroll className="[&>*]:w-[155px] [&>*]:sm:w-[190px]">
                       {tab.items.map((product) => (
                         <ProductCard key={product.id} product={product} variant="compact" onAddToCart={onAddToCart} />
                       ))}
@@ -289,20 +299,7 @@ export function HomePage({ onAddToCart }: HomePageProps) {
         />
 
         <div className="mt-8 space-y-12">
-          {isCollectionsLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, idx) => (
-                <div key={idx} className="rounded-2xl border border-border overflow-hidden">
-                  <Skeleton className="h-40 w-full" />
-                  <div className="p-6 space-y-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-6 w-2/3" />
-                    <Skeleton className="h-4 w-full" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : landingCollections.length === 0 ? (
+          {isCollectionsLoading ? null : landingCollections.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground">
               No collections available yet.
             </div>
@@ -362,7 +359,7 @@ export function HomePage({ onAddToCart }: HomePageProps) {
                   ) : null}
 
                   {collection.products && collection.products.length > 0 ? (
-                    <HorizontalScroll>
+                    <HorizontalScroll className="[&>*]:w-[155px] [&>*]:sm:w-[190px]">
                       {collection.products.map((product) => (
                         <ProductCard key={product.id} product={product} variant="compact" onAddToCart={onAddToCart} />
                       ))}
@@ -380,8 +377,8 @@ export function HomePage({ onAddToCart }: HomePageProps) {
       </section>
 
       <section className={container + ' py-10 sm:py-14'}>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-background to-background p-7">
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory lg:grid lg:snap-none lg:overflow-visible lg:grid-cols-2">
+          <div className="relative w-[320px] sm:w-[420px] lg:w-auto flex-shrink-0 snap-start overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-background to-background p-5 sm:p-7">
             <div
               className="absolute inset-0 opacity-80"
               style={{
@@ -393,13 +390,13 @@ export function HomePage({ onAddToCart }: HomePageProps) {
               <Badge className="bg-primary/10 text-primary border-primary/20 text-xs font-bold px-4 py-1.5 uppercase tracking-wide">
                 Gaming & creators
               </Badge>
-              <h2 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+              <h2 className="text-xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
                 Build your setup.
               </h2>
-              <p className="text-sm text-muted-foreground max-w-xl">
+              <p className="text-sm text-muted-foreground max-w-xl line-clamp-3">
                 Consoles, peripherals, monitors, and performance upgrades—curated for every budget.
               </p>
-              <Button size="lg" className="font-semibold shadow-sm" asChild>
+              <Button className="font-semibold shadow-sm" asChild>
                 <Link href="/category/gaming">
                   Explore gaming
                   <Fire size={18} weight="fill" className="ml-2" />
@@ -408,7 +405,7 @@ export function HomePage({ onAddToCart }: HomePageProps) {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-accent/10 via-background to-background p-7">
+          <div className="relative w-[320px] sm:w-[420px] lg:w-auto flex-shrink-0 snap-start overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-accent/10 via-background to-background p-5 sm:p-7">
             <div
               className="absolute inset-0 opacity-80"
               style={{
@@ -420,21 +417,21 @@ export function HomePage({ onAddToCart }: HomePageProps) {
               <Badge className="bg-accent/10 text-accent border-accent/20 text-xs font-bold px-4 py-1.5 uppercase tracking-wide">
                 Member pricing
               </Badge>
-              <h2 className="text-2xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
+              <h2 className="text-xl sm:text-3xl font-bold" style={{ fontFamily: 'var(--font-display)' }}>
                 Sign up, save more.
               </h2>
-              <p className="text-sm text-muted-foreground max-w-xl">
+              <p className="text-sm text-muted-foreground max-w-xl line-clamp-3">
                 Create an account for early-access deals, faster checkout, and tailored recommendations.
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button size="lg" className="font-semibold shadow-sm" asChild>
+                <Button className="font-semibold shadow-sm" asChild>
                   <Link href="/signup">
                     Create account
                     <ArrowRight size={18} weight="bold" className="ml-2" />
                   </Link>
                 </Button>
                 <Button
-                  size="lg"
+                  size="default"
                   variant="outline"
                   className="bg-background/60 hover:bg-background"
                   asChild

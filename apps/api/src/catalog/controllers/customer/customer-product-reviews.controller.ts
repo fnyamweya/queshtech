@@ -17,7 +17,7 @@ import { ResponseUtil } from 'src/common/utils/response.util';
 import { ProductReviewService } from '../../services/product-review.service';
 import { UpsertProductReviewDto } from '../../dto/product-review.dto';
 
-@Controller('customer/product-reviews')
+@Controller('customer/catalog/products/:productId/reviews')
 @UseGuards(JwtAuthGuard)
 @ApiTags('Customer: Product Reviews')
 @ApiBearerAuth('access-token')
@@ -31,7 +31,7 @@ import { UpsertProductReviewDto } from '../../dto/product-review.dto';
 export class CustomerProductReviewsController {
   constructor(private readonly productReviewService: ProductReviewService) {}
 
-  @Get(':productId')
+  @Get('me')
   @ApiOperation({ summary: 'Get my review for a product' })
   @ApiOkResponse({ description: 'My product review retrieved successfully' })
   async getMyReview(
@@ -42,7 +42,7 @@ export class CustomerProductReviewsController {
     return ResponseUtil.success(review, 'My product review retrieved successfully');
   }
 
-  @Put(':productId')
+  @Put('me')
   @ApiOperation({ summary: 'Create or update my product review (submits for moderation)' })
   @ApiOkResponse({ description: 'My product review saved successfully' })
   async upsert(
@@ -58,7 +58,7 @@ export class CustomerProductReviewsController {
     return ResponseUtil.success(review, 'My product review saved successfully');
   }
 
-  @Delete(':productId')
+  @Delete('me')
   @ApiOperation({ summary: 'Delete my review for a product' })
   @ApiOkResponse({ description: 'My product review deleted successfully' })
   async deleteMyReview(

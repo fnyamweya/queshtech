@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { In } from 'typeorm';
 import { FindManyOptions } from 'typeorm';
-import { Order } from '../entities/order.entity';
+import { Order, OrderStatus } from '../entities/order.entity';
 import { OrderItem } from '../entities/order-item.entity';
 import { OrderItemCharge } from '../entities/order-item-charge.entity';
 import { OrderLevelCharge } from '../entities/order-level-charge.entity';
@@ -28,6 +28,9 @@ import { CatalogShippingContextService } from '../../shipping/services/catalog-s
 import { Location } from '../../location/entities/location.entity';
 import { CurrencyService } from 'src/currency/currency.service';
 import { CustomerShippingAddressService } from '../../customer-shipping-address/services/customer-shipping-address.service';
+import { ConfigService } from '@nestjs/config';
+import { OrderNotificationService } from './order-notification.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class OrderService {
@@ -65,6 +68,8 @@ export class OrderService {
     private readonly catalogShippingContextService: CatalogShippingContextService,
     private readonly currencyService: CurrencyService,
     private readonly customerShippingAddressService: CustomerShippingAddressService,
+    private readonly configService: ConfigService,
+    private readonly orderNotificationService: OrderNotificationService,
   ) {}
 
   private allocateProportionally(
@@ -107,6 +112,85 @@ export class OrderService {
     }
 
     return rounded;
+  }
+
+  private async ensureInvoiceToken(order: Order): Promise<string> {
+    const meta: any = order.metaJson ?? {};
+    if (meta.invoiceToken) return String(meta.invoiceToken);
+
+    const token = randomUUID();
+    order.metaJson = { ...meta, invoiceToken: token };
+    await this.orderRepository.save(order);
+    return token;
+  }
+
+  private buildPublicBaseUrl(): string {
+    const raw = this.configService.get<string>('APP_URL') || '';
+    return raw.replace(/\/+$/, '');
+  }
+
+  private buildCustomerBaseUrl(): string {
+    const raw =
+      this.configService.get<string>('CUSTOMER_APP_URL') ||
+      this.configService.get<string>('APP_URL') ||
+      '';
+    return raw.replace(/\/+$/, '');
+  }
+
+  private formatShippingAddressSummary(
+    fieldsJson?: Record<string, unknown>,
+  ): string | undefined {
+    if (!fieldsJson || typeof fieldsJson !== 'object') return undefined;
+    const fields = fieldsJson as Record<string, unknown>;
+    const keys = [
+      'address1',
+      'address2',
+      'line1',
+      'line2',
+      'street',
+      'street2',
+      'city',
+      'state',
+      'region',
+      'province',
+      'postalCode',
+      'postal',
+      'zip',
+      'district',
+      'landmark',
+    ];
+    const parts: string[] = [];
+    for (const key of keys) {
+      const value = fields[key];
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed && !parts.includes(trimmed)) parts.push(trimmed);
+      }
+    }
+    return parts.length ? parts.join(', ') : undefined;
+  }
+
+  async getInvoiceLinks(order: Order): Promise<{
+    token: string;
+    invoiceUrl: string;
+    pdfUrl: string;
+    paymentUrl: string;
+  }> {
+    const token = await this.ensureInvoiceToken(order);
+    const apiBase = this.buildPublicBaseUrl();
+    const customerBase = this.buildCustomerBaseUrl();
+    const invoiceUrl = `${apiBase}/api/v1/orders/${order.id}/invoice?token=${encodeURIComponent(token)}`;
+    const pdfUrl = `${apiBase}/api/v1/orders/${order.id}/invoice.pdf?token=${encodeURIComponent(token)}`;
+    const paymentUrl = `${customerBase}/pay/${order.id}?token=${encodeURIComponent(token)}`;
+    return { token, invoiceUrl, pdfUrl, paymentUrl };
+  }
+
+  assertInvoiceToken(order: Order, token: string): void {
+    const meta: any = order.metaJson ?? {};
+    const expected = String(meta.invoiceToken || '').trim();
+    if (!expected || expected !== String(token || '').trim()) {
+      throw new BadRequestException('Invalid invoice token');
+    }
   }
 
   async create(payload: CreateOrderDto) {
@@ -178,6 +262,19 @@ export class OrderService {
         }
       : undefined;
 
+    const shippingName = shippingSnapshot
+      ? [shippingSnapshot.firstName, shippingSnapshot.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim() || undefined
+      : undefined;
+    const shippingPhone = shippingSnapshot?.phone
+      ? String(shippingSnapshot.phone).trim() || undefined
+      : undefined;
+    const shippingAddressSummary = shippingSnapshot
+      ? this.formatShippingAddressSummary(shippingSnapshot.fieldsJson)
+      : undefined;
+
     // Resolve price list if provided
     let priceList: PriceList | null = null;
     if (payload.priceListId) {
@@ -215,6 +312,9 @@ export class OrderService {
       customerName:
         [customer.firstName, customer.lastName].filter(Boolean).join(' ') ||
         undefined,
+      shippingName,
+      shippingPhone,
+      shippingAddressSummary,
       priceListId: resolvedPriceList.id,
       currencyCode: await this.currencyService.assertExists(
         resolvedPriceList.currency,
@@ -374,6 +474,11 @@ export class OrderService {
       best = candidates[0];
     }
     const shippingFee = best ? best.amount : 0;
+    const isNegotiatedMethod = Boolean(
+      best &&
+        (best.method?.code === 'internal_negotiated' ||
+          (best.rate?.metaJson as any)?.negotiated),
+    );
 
     if (shippingFee !== 0) {
       const shippingCharge = this.orderLevelChargeRepository.create({
@@ -725,6 +830,11 @@ export class OrderService {
       taxAmount
     ).toFixed(4);
 
+    if (isNegotiatedMethod) {
+      savedOrder.status = OrderStatus.AWAITING_SHIPPING_QUOTE;
+      savedOrder.shippingQuotePending = true;
+    }
+
     const updated = await this.orderRepository.save(savedOrder);
 
     // Return hydrated order so clients can see item charges + order level charges in one response.
@@ -734,6 +844,125 @@ export class OrderService {
     } as any);
 
     return hydrated ?? updated;
+  }
+
+  async applyShippingQuote(input: {
+    orderId: string;
+    amount: number;
+    currencyCode?: string;
+    note?: string;
+    sendNotifications?: boolean;
+  }) {
+    const order = await this.orderRepository.findOne({
+      where: { id: input.orderId },
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    const amount = Number(input.amount || 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new BadRequestException('Invalid shipping quote amount');
+    }
+
+    if (input.currencyCode) {
+      const normalized = await this.currencyService.assertExists(
+        input.currencyCode,
+      );
+      if (normalized !== order.currencyCode) {
+        throw new BadRequestException('Quote currency does not match order');
+      }
+    }
+
+    const itemsSubtotal = Number(order.itemsSubtotal || 0);
+    const discountTotal = Number(order.discountTotal || 0);
+    const shippingDiscount = Number(order.shippingDiscount || 0);
+    const itemTaxTotal = Number(order.taxTotal || 0);
+
+    const shippingNet = Math.max(0, amount - shippingDiscount);
+    const taxable = Math.max(0, itemsSubtotal - discountTotal + shippingNet);
+    const taxResult = await this.taxService.calculateTax({
+      taxableAmount: taxable,
+      currencyCode: order.currencyCode,
+    });
+
+    let totalTax = Number(taxResult.amount || 0);
+    if (totalTax < itemTaxTotal) totalTax = itemTaxTotal;
+    const shippingTax = Math.max(0, totalTax - itemTaxTotal);
+
+    order.shippingSubtotal = amount.toFixed(4);
+    order.shippingTax = shippingTax.toFixed(4);
+    order.shippingTotal = (shippingNet + shippingTax).toFixed(4);
+    order.grandTotal = (
+      itemsSubtotal -
+      discountTotal +
+      shippingNet +
+      totalTax
+    ).toFixed(4);
+    order.status = OrderStatus.READY_FOR_PAYMENT;
+    order.shippingQuotePending = false;
+
+    const meta: any = order.metaJson ?? {};
+    const quotedAt = new Date().toISOString();
+    order.metaJson = {
+      ...meta,
+      shippingQuote: {
+        amount: amount.toFixed(4),
+        currency: order.currencyCode,
+        note: input.note || undefined,
+        quotedAt,
+      },
+    };
+
+    await this.orderRepository.save(order);
+
+    await this.orderLevelChargeRepository.save(
+      this.orderLevelChargeRepository.create({
+        orderId: order.id,
+        chargeKind: 'shipping',
+        displayName: 'Shipping Quote',
+        calculationType: 'fixed',
+        baseAmount: order.itemsSubtotal,
+        amount: amount.toFixed(4),
+        isIncludedInPrice: false,
+        appliesToShipping: true,
+        sourceType: 'shipping_quote',
+        sourceReference: 'admin',
+        metaJson: {
+          note: input.note || undefined,
+          quotedAt,
+        },
+      }),
+    );
+
+    if (shippingTax > 0) {
+      await this.orderLevelChargeRepository.save(
+        this.orderLevelChargeRepository.create({
+          orderId: order.id,
+          chargeKind: 'tax',
+          displayName: 'Shipping Tax',
+          calculationType: taxResult.rate ? 'percentage' : 'fixed',
+          rate: (taxResult.rate || 0).toFixed(6) as any,
+          baseAmount: shippingNet.toFixed(4),
+          amount: shippingTax.toFixed(4),
+          isIncludedInPrice: false,
+          appliesToShipping: true,
+          sourceType: 'tax',
+          metaJson: taxResult.meta || {},
+        }),
+      );
+    }
+
+    const sendNotifications = input.sendNotifications !== false;
+    if (sendNotifications) {
+      const links = await this.getInvoiceLinks(order);
+      await this.orderNotificationService.sendInvoiceReady({
+        order,
+        invoiceUrl: links.invoiceUrl,
+        paymentUrl: links.paymentUrl,
+        pdfUrl: links.pdfUrl,
+      });
+    }
+
+    return this.findOneHydrated(order.id);
   }
 
   async findAndCount(options: FindManyOptions<Order>) {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, Loader2, RefreshCw, Save, Send } from 'lucide-react'
+import { CornerDownRight, RefreshCw, Save, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -491,11 +491,11 @@ export function AdminSettingsWhatsappPage() {
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs text-muted-foreground">
-                {isLoadingSettings ? 'Loading saved settings…' : initial ? 'Loaded from API.' : 'Not loaded.'}
+                {initial ? 'Loaded from API.' : 'Not loaded.'}
               </div>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={loadSettings} disabled={isLoadingSettings}>
-                  {isLoadingSettings ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Reload
                 </Button>
                 <Button
@@ -624,7 +624,7 @@ export function AdminSettingsWhatsappPage() {
                     Open Swagger verify docs
                   </a>
                   <Button type="button" variant="outline" size="sm" onClick={onVerifyWebhook} disabled={isVerifyingWebhook || !webhookUrl.trim()}>
-                    {isVerifyingWebhook ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    <RefreshCw className="h-4 w-4 mr-2" />
                     Test verification
                   </Button>
                 </div>
@@ -640,7 +640,7 @@ export function AdminSettingsWhatsappPage() {
 
             <div className="flex items-center justify-end">
               <Button onClick={onSave} disabled={isSaving || !isDirty}>
-                {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                <Save className="h-4 w-4 mr-2" />
                 Save settings
               </Button>
             </div>
@@ -690,12 +690,12 @@ export function AdminSettingsWhatsappPage() {
                         }}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder={isLoadingTemplates ? 'Loading…' : 'Select a template'} />
+                          <SelectValue placeholder="Select a template" />
                         </SelectTrigger>
                         <SelectContent>
                           {templates.length === 0 ? (
                             <SelectItem value="__none__" disabled>
-                              {isLoadingTemplates ? 'Loading…' : 'No active templates'}
+                              No active templates
                             </SelectItem>
                           ) : null}
                           {templates.map((t) => (
@@ -708,15 +708,13 @@ export function AdminSettingsWhatsappPage() {
 
                       <div className="flex items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={loadTemplates} disabled={isLoadingTemplates}>
-                          {isLoadingTemplates ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                          <RefreshCw className="h-4 w-4 mr-2" />
                           Refresh templates
                         </Button>
                         <div className="text-xs text-muted-foreground">
-                          {isLoadingTemplateDetail
-                            ? 'Loading template…'
-                            : selectedTemplate
-                              ? `${selectedTemplate.language || '—'} · ${selectedTemplate.status || '—'}`
-                              : 'Choose a template to continue.'}
+                          {selectedTemplate
+                            ? `${selectedTemplate.language || '—'} · ${selectedTemplate.status || '—'}`
+                            : 'Choose a template to continue.'}
                         </div>
                       </div>
                     </div>
@@ -767,7 +765,7 @@ export function AdminSettingsWhatsappPage() {
                     (testMode === 'freeText' ? !testMessage.trim() : !resolvedTemplateMessage.trim())
                   }
                 >
-                  {isSimulating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                  <Send className="h-4 w-4 mr-2" />
                   Send test
                 </Button>
               </div>

@@ -15,7 +15,6 @@ import {
   Sparkle,
   Gift,
   ArrowRight,
-  Tag,
   SignOut,
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
@@ -104,11 +103,16 @@ export function MobileNav({ open, onOpenChange }: MobileNavProps) {
                   <h4 className="text-white font-bold text-xs mb-0.5">Gaming Sale</h4>
                   <p className="text-white/90 text-[10px]">Up to 40% off</p>
                 </div>
-                <Link href="/category/gaming" onClick={handleLinkClick}>
-                  <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-semibold h-7 px-3 text-xs">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="bg-background/95 hover:bg-background font-semibold h-7 px-3 text-xs"
+                >
+                  <Link href="/category/gaming" onClick={handleLinkClick}>
                     Shop
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             </motion.div>
 
@@ -120,30 +124,38 @@ export function MobileNav({ open, onOpenChange }: MobileNavProps) {
               <nav className="space-y-0.5">
                 {isAuthenticated ? (
                   <>
-                    <Link href="/profile" onClick={handleLinkClick}>
-                      <Button variant="ghost" className="w-full justify-start gap-2 h-8 hover:bg-primary/10 hover:text-primary transition-colors text-xs">
+                    <Button
+                      asChild
+                      variant="ghost"
+                      className="w-full justify-start gap-2 h-8 hover:bg-primary/10 hover:text-primary transition-colors text-xs"
+                    >
+                      <Link href="/profile" onClick={handleLinkClick}>
                         <div className="p-1 rounded-md bg-primary/10 text-primary">
                           <User size={12} weight="bold" />
                         </div>
                         <span className="font-medium">My Profile</span>
-                      </Button>
-                    </Link>
-                    <Link href="/profile/orders" onClick={handleLinkClick}>
-                      <Button variant="ghost" className="w-full justify-start gap-2 h-8 hover:bg-accent/10 hover:text-accent transition-colors text-xs">
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="ghost"
+                      className="w-full justify-start gap-2 h-8 hover:bg-accent/10 hover:text-accent transition-colors text-xs"
+                    >
+                      <Link href="/profile/orders" onClick={handleLinkClick}>
                         <div className="p-1 rounded-md bg-accent/10 text-accent">
                           <Package size={12} weight="bold" />
                         </div>
                         <span className="font-medium">Orders</span>
-                      </Button>
-                    </Link>
-                    <Link href="/profile/settings" onClick={handleLinkClick}>
-                      <Button variant="ghost" className="w-full justify-start gap-2 h-8 hover:bg-muted transition-colors text-xs">
+                      </Link>
+                    </Button>
+                    <Button asChild variant="ghost" className="w-full justify-start gap-2 h-8 hover:bg-muted transition-colors text-xs">
+                      <Link href="/profile/settings" onClick={handleLinkClick}>
                         <div className="p-1 rounded-md bg-muted text-foreground">
                           <Gear size={12} weight="bold" />
                         </div>
                         <span className="font-medium">Settings</span>
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                     <Button
                       variant="ghost"
                       className="w-full justify-start gap-2 h-8 hover:bg-primary/10 hover:text-primary transition-colors text-xs"
@@ -185,7 +197,7 @@ export function MobileNav({ open, onOpenChange }: MobileNavProps) {
               </h3>
               <nav className="space-y-0.5">
                 {categories.map((category) => {
-                  const Icon = categoryIcons[category.slug] || DeviceMobile
+                  const Icon = resolvePhosphorIcon(category.icon) || DeviceMobile
                   const isGaming = category.slug === 'gaming'
                   return (
                     <Link key={category.id} href={`/category/${category.slug}`} onClick={handleLinkClick}>

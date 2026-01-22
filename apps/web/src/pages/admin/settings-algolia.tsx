@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, Loader2, RefreshCcw, Save, TestTube, Wand2, Zap } from 'lucide-react'
+import { CornerDownRight, RefreshCcw, Save, TestTube, Wand2, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Button } from '@/components/ui/button'
@@ -224,7 +224,7 @@ export function AdminSettingsAlgoliaPage() {
       actions={
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
-            {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-2" />}
+            <RefreshCcw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
           <Link href="/axis/settings">
@@ -329,7 +329,7 @@ export function AdminSettingsAlgoliaPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="text-xs text-muted-foreground">Last updated: {lastUpdatedAt || '—'}</div>
                 <Button onClick={onSave} disabled={isSaving || isLoading}>
-                  {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  <Save className="h-4 w-4 mr-2" />
                   Save settings
                 </Button>
               </div>
@@ -356,7 +356,7 @@ export function AdminSettingsAlgoliaPage() {
 
               <div className="flex items-center justify-end">
                 <Button onClick={onSaveSecret} disabled={isSavingSecret || isLoading}>
-                  {isSavingSecret ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  <Save className="h-4 w-4 mr-2" />
                   Update secret
                 </Button>
               </div>
@@ -372,7 +372,7 @@ export function AdminSettingsAlgoliaPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Button variant="outline" className="w-full justify-start" onClick={onTest} disabled={isTesting || isLoading}>
-                {isTesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <TestTube className="h-4 w-4 mr-2" />}
+                <TestTube className="h-4 w-4 mr-2" />
                 Test connection
               </Button>
               <Button
@@ -381,7 +381,7 @@ export function AdminSettingsAlgoliaPage() {
                 onClick={onApply}
                 disabled={isApplying || isLoading}
               >
-                {isApplying ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                <Wand2 className="h-4 w-4 mr-2" />
                 Apply index settings
               </Button>
               <Button
@@ -390,7 +390,7 @@ export function AdminSettingsAlgoliaPage() {
                 onClick={onReindex}
                 disabled={isReindexing || isLoading}
               >
-                {isReindexing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+                <Zap className="h-4 w-4 mr-2" />
                 Reindex all products
               </Button>
             </CardContent>

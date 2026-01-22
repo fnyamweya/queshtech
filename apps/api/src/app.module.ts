@@ -36,6 +36,8 @@ import { OrderPaymentModule } from './order-payment/order-payment.module';
 import { OrderFulfillmentModule } from './order-fulfillment/order-fulfillment.module';
 import { OrderEventsModule } from './order-events/order-events.module';
 import { AccountingModule } from './accounting/accounting.module';
+import { PaystackModule } from './paystack/paystack.module';
+import { TinggModule } from './tingg/tingg.module';
 
 const envFilePath = existsSync(`${process.cwd()}/.env.local`) ? '.env.local' : '.env';
 
@@ -79,6 +81,8 @@ const envFilePath = existsSync(`${process.cwd()}/.env.local`) ? '.env.local' : '
     AccountingModule,
     OrderFulfillmentModule,
     OrderEventsModule,
+    PaystackModule,
+    TinggModule,
   ],
   controllers: [AppController],
   providers: [

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
 import { useAdminCollections, type AdminCollectionInput } from '@/hooks/use-catalog-collections'
 import { useAdminBanners, type AdminBannerInput } from '@/hooks/use-banners'
@@ -36,6 +37,7 @@ export function AdminCollectionsPage() {
     badge: 'Landing',
     sortOrder: landingCollections.length + 1,
     isActive: true,
+    isHomepage: false,
   })
 
   const [bannerDraft, setBannerDraft] = useState<AdminBannerInput>({
@@ -81,6 +83,7 @@ export function AdminCollectionsPage() {
           imageUrl: '',
           heroImageUrl: '',
           bannerImageUrl: '',
+          isHomepage: prev.isHomepage,
         }))
       }
     } catch (error: any) {
@@ -293,6 +296,16 @@ export function AdminCollectionsPage() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label>Show on homepage</Label>
+                    <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                      <span className="text-sm text-muted-foreground">Use in homepage selection lists</span>
+                      <Switch
+                        checked={Boolean(collectionDraft.isHomepage)}
+                        onCheckedChange={(value) => setCollectionDraft((prev) => ({ ...prev, isHomepage: value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="collection-active">Status</Label>
                     <Select
                       value={collectionDraft.isActive ? 'active' : 'inactive'}
@@ -311,7 +324,7 @@ export function AdminCollectionsPage() {
 
                 <div className="pt-2">
                   <Button type="submit" disabled={isCollectionsLoading}>
-                    {isCollectionsLoading ? 'Saving...' : 'Create collection'}
+                    Create collection
                   </Button>
                 </div>
               </form>
@@ -344,6 +357,8 @@ export function AdminCollectionsPage() {
                       </Avatar>
                       <h3 className="font-semibold">{collection.title || collection.name || collection.slug}</h3>
                       {collection.badge ? <Badge variant="outline">{collection.badge}</Badge> : null}
+                      {collection.badge ? <Badge variant="outline">{collection.badge}</Badge> : null}
+                      {collection.isHomepage ? <Badge className="bg-primary/10 text-primary border-primary/20">Homepage</Badge> : null}
                     </div>
                     <p className="text-sm text-muted-foreground line-clamp-2">{collection.description || 'No description provided.'}</p>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -505,7 +520,7 @@ export function AdminCollectionsPage() {
                 </div>
 
                 <Button type="submit" disabled={isBannersLoading}>
-                  {isBannersLoading ? 'Saving...' : 'Save banner'}
+                  Save banner
                 </Button>
               </form>
             </CardContent>

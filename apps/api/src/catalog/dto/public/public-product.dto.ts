@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PublicBrandDto } from './public-brand.dto';
+import { ProductImageDto } from '../product-image.dto';
 
 export class PublicProductPriceDto {
   @ApiProperty()
@@ -44,12 +45,6 @@ export class PublicProductSkuDto {
   })
   availability?: Record<string, unknown>;
 
-  @ApiPropertyOptional({
-    type: [String],
-    example: ['https://cdn.example.com/products/nova-x/black.png'],
-  })
-  images?: string[];
-
   @ApiPropertyOptional({ type: () => PublicProductPriceDto })
   price?: PublicProductPriceDto;
 }
@@ -87,6 +82,9 @@ export class PublicProductDto {
   @ApiPropertyOptional()
   description?: string;
 
+  @ApiPropertyOptional()
+  shortDescription?: string;
+
   @ApiPropertyOptional({ example: 'Nova X Phone | Shop' })
   seoTitle?: string;
 
@@ -106,6 +104,9 @@ export class PublicProductDto {
 
   @ApiProperty({ type: () => PublicProductSkuDto, isArray: true })
   skus: PublicProductSkuDto[];
+
+  @ApiProperty({ type: () => ProductImageDto, isArray: true })
+  images: ProductImageDto[];
 
   @ApiProperty({ type: () => PublicProductCategoryRefDto, isArray: true })
   categories: PublicProductCategoryRefDto[];

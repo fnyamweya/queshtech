@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 
 export class ListPaymentMethodsDto {
   @ApiPropertyOptional({ description: 'Free-text search by code or name' })
@@ -18,6 +18,15 @@ export class ListPaymentMethodsDto {
   })
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Filter by status',
+    enum: ['active', 'inactive', 'deprecated'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['active', 'inactive', 'deprecated'])
+  status?: string;
 
   @ApiPropertyOptional({ description: 'Filter by provider id' })
   @IsOptional()

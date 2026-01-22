@@ -57,12 +57,13 @@ export const endpoints = {
   catalog: {
     categories: p('/catalog/categories'),
     categoryById: (id: string) => p(`/catalog/categories/${encodeURIComponent(id)}`),
-    publicCategories: (params?: { page?: number; limit?: number; isActive?: boolean }) => {
+    publicCategories: (params?: { page?: number; limit?: number; isActive?: boolean; isHomepage?: boolean }) => {
       if (!params) return p('/public/catalog/categories')
       const qs = new URLSearchParams()
       if (typeof params.page === 'number') qs.set('page', String(params.page))
       if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
       if (typeof params.isActive === 'boolean') qs.set('isActive', String(params.isActive))
+      if (typeof params.isHomepage === 'boolean') qs.set('isHomepage', String(params.isHomepage))
       const query = qs.toString()
       return query ? p(`/public/catalog/categories?${query}`) : p('/public/catalog/categories')
     },
@@ -92,24 +93,65 @@ export const endpoints = {
         return query ? p(`/public/catalog/products/view?${query}`) : p('/public/catalog/products/view')
       },
       publicProductById: (id: string) => p(`/public/catalog/products/${encodeURIComponent(id)}`),
-      publicProductViewById: (id: string) => p(`/public/catalog/products/${encodeURIComponent(id)}/view`),
-    publicCollections: (params?: { type?: string; page?: number; limit?: number; isActive?: boolean }) => {
+      publicProductViewById: (
+        id: string,
+        params?: {
+          locale?: string
+          priceListId?: string
+          currencyCode?: string
+          channel?: string
+          customerGroup?: string
+          location?: string
+          role?: string
+        }
+      ) => {
+        const base = `/public/catalog/products/${encodeURIComponent(id)}/view`
+        if (!params) return p(base)
+        const qs = new URLSearchParams()
+        if (params.locale) qs.set('locale', params.locale)
+        if (params.priceListId) qs.set('priceListId', params.priceListId)
+        if (params.currencyCode) qs.set('currencyCode', params.currencyCode)
+        if (params.channel) qs.set('channel', params.channel)
+        if (params.customerGroup) qs.set('customerGroup', params.customerGroup)
+        if (params.location) qs.set('location', params.location)
+        if (params.role) qs.set('role', params.role)
+        const query = qs.toString()
+        return query ? p(`${base}?${query}`) : p(base)
+      },
+      publicProductRatingSummary: (productId: string) =>
+        p(`/public/catalog/products/${encodeURIComponent(productId)}/reviews/summary`),
+      publicProductReviews: (
+        productId: string,
+        params?: { page?: number; limit?: number; sort?: 'newest' | 'oldest' | 'highest' | 'lowest' }
+      ) => {
+        const base = `/public/catalog/products/${encodeURIComponent(productId)}/reviews`
+        if (!params) return p(base)
+        const qs = new URLSearchParams()
+        if (typeof params.page === 'number') qs.set('page', String(params.page))
+        if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
+        if (params.sort) qs.set('sort', params.sort)
+        const query = qs.toString()
+        return query ? p(`${base}?${query}`) : p(base)
+      },
+    publicCollections: (params?: { type?: string; page?: number; limit?: number; isActive?: boolean; isHomepage?: boolean }) => {
       if (!params) return p('/public/catalog/collections')
       const qs = new URLSearchParams()
       if (params.type) qs.set('type', params.type)
       if (typeof params.page === 'number') qs.set('page', String(params.page))
       if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
       if (typeof params.isActive === 'boolean') qs.set('isActive', String(params.isActive))
+      if (typeof params.isHomepage === 'boolean') qs.set('isHomepage', String(params.isHomepage))
       const query = qs.toString()
       return query ? p(`/public/catalog/collections?${query}`) : p('/public/catalog/collections')
     },
-    collections: (params?: { type?: string; page?: number; limit?: number; isActive?: boolean; q?: string }) => {
+    collections: (params?: { type?: string; page?: number; limit?: number; isActive?: boolean; isHomepage?: boolean; q?: string }) => {
       if (!params) return p('/catalog/collections')
       const qs = new URLSearchParams()
       if (params.type) qs.set('type', params.type)
       if (typeof params.page === 'number') qs.set('page', String(params.page))
       if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
       if (typeof params.isActive === 'boolean') qs.set('isActive', String(params.isActive))
+      if (typeof params.isHomepage === 'boolean') qs.set('isHomepage', String(params.isHomepage))
       if (params.q) qs.set('q', params.q)
       const query = qs.toString()
       return query ? p(`/catalog/collections?${query}`) : p('/catalog/collections')
@@ -192,6 +234,15 @@ export const endpoints = {
     c2bSimulate: p('/mpesa/c2b/simulate'),
     b2cPayment: p('/mpesa/b2c/payment'),
     b2bPayment: p('/mpesa/b2b/payment'),
+    stkPush: p('/mpesa/stk/push'),
+    stkStatus: (orderId: string) => p(`/mpesa/stk/status/${encodeURIComponent(orderId)}`),
+  },
+  paystack: {
+    initialize: p('/paystack/initialize'),
+    confirm: (reference: string) => p(`/paystack/confirm/${encodeURIComponent(reference)}`),
+  },
+  tingg: {
+    checkout: p('/tingg/checkout'),
   },
   roles: {
     list: (query: string = 'getAll=true') => p(`/roles?${query}`),
@@ -222,8 +273,31 @@ export const endpoints = {
   customer: {
     shippingAddress: p('/customer/shipping-address'),
   },
+  checkout: {
+    sessions: p('/checkout/sessions'),
+    sessionById: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}`),
+    delivery: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}/delivery`),
+    shippingMethods: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}/shipping-methods`),
+    shippingMethod: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}/shipping-method`),
+    review: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}/review`),
+    confirm: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}/confirm`),
+  },
   orders: {
     base: p('/orders'),
+    byId: (id: string) => p(`/orders/${encodeURIComponent(id)}`),
+    shippingQuote: (id: string) => p(`/orders/${encodeURIComponent(id)}/shipping/quote`),
+    invoiceSummary: (id: string, token: string) =>
+      p(`/orders/${encodeURIComponent(id)}/invoice/summary?token=${encodeURIComponent(token)}`),
+    invoicePdf: (id: string, token: string) =>
+      p(`/orders/${encodeURIComponent(id)}/invoice.pdf?token=${encodeURIComponent(token)}`),
+  },
+  paymentMethods: {
+    base: p('/payment-methods'),
+    byId: (id: string) => p(`/payment-methods/${encodeURIComponent(id)}`),
+  },
+  paymentProviders: {
+    base: p('/payment-providers'),
+    byId: (id: string) => p(`/payment-providers/${encodeURIComponent(id)}`),
   },
   locations: {
     list: (params?: { parentId?: string; countryCode?: string; type?: string; q?: string }) => {
@@ -262,9 +336,12 @@ export const endpoints = {
     zoneById: (id: string) => p(`/shipping/zones/${encodeURIComponent(id)}`),
     zoneLocations: (zoneId: string) => p(`/shipping/zones/${encodeURIComponent(zoneId)}/locations`),
     methodsByZone: (zoneId: string) => p(`/shipping/zones/${encodeURIComponent(zoneId)}/methods`),
+    methods: p('/shipping/methods'),
     methodById: (id: string) => p(`/shipping/methods/${encodeURIComponent(id)}`),
     ratesByMethod: (methodId: string) => p(`/shipping/methods/${encodeURIComponent(methodId)}/rates`),
     rateById: (id: string) => p(`/shipping/rates/${encodeURIComponent(id)}`),
+    providers: p('/shipping/providers'),
+    providerById: (id: string) => p(`/shipping/providers/${encodeURIComponent(id)}`),
     quotes: p('/shipping/quotes'),
   },
   settings: {

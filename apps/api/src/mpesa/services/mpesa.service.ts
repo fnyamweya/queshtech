@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getDarajaBaseUrl } from '../mpesa.config';
@@ -10,6 +12,7 @@ import { C2BRegisterUrlsDto } from '../dto/c2b-register-urls.dto';
 import { C2BSimulateDto } from '../dto/c2b-simulate.dto';
 import { B2CPaymentRequestDto } from '../dto/b2c-payment-request.dto';
 import { B2BPaymentRequestDto } from '../dto/b2b-payment-request.dto';
+import { StkPushRequestDto } from '../dto/stk-push-request.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -90,6 +93,12 @@ export class MpesaService {
     return value.replace(/\/$/, '');
   }
 
+  private get passkey(): string {
+    const value = this.config.get<string>('MPESA_DARAJA_PASSKEY');
+    if (!value) throw new BadRequestException('Missing MPESA_DARAJA_PASSKEY');
+    return value;
+  }
+
   private buildCallbackUrl(path: string): string {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${this.callbackBaseUrl}${normalizedPath}`;
@@ -157,17 +166,59 @@ export class MpesaService {
     } catch (error: any) {
       const status = error?.response?.status;
       const data = error?.response?.data;
+      const errorMessage =
+        (typeof data?.errorMessage === 'string' && data.errorMessage) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (typeof data?.ResponseDescription === 'string' && data.ResponseDescription) ||
+        (typeof data?.responseDescription === 'string' && data.responseDescription) ||
+        (typeof data?.errorCode === 'string' && data.errorCode) ||
+        undefined;
       this.logger.error(
         `Daraja POST ${path} failed (${status ?? 'n/a'})`,
         data,
       );
-      throw new InternalServerErrorException('Daraja request failed');
+      const detail = errorMessage ? `: ${errorMessage}` : '';
+      if (typeof status === 'number' && status >= 400 && status < 500) {
+        throw new BadRequestException({
+          message: `Daraja request failed${detail}`,
+          details: data ?? null,
+        });
+      }
+      throw new InternalServerErrorException(`Daraja request failed${detail}`);
     }
   }
 
   private asStringRecord(input: unknown): Record<string, unknown> {
     if (!input || typeof input !== 'object') return {};
     return input as Record<string, unknown>;
+  }
+
+  private normalizeMsisdn(input: string): string {
+    const digits = String(input || '').replace(/[^0-9]/g, '');
+    if (!digits) throw new BadRequestException('Invalid phone number');
+    if (digits.startsWith('254')) return digits;
+    if (digits.startsWith('0')) return `254${digits.slice(1)}`;
+    if (digits.length === 9) return `254${digits}`;
+    return digits;
+  }
+
+  private formatTimestamp(date: Date = new Date()): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  }
+
+  private normalizeAccountReference(value?: string, fallback = 'Checkout'): string {
+    const raw = String(value || '').trim();
+    const cleaned = raw.replace(/[^0-9A-Za-z]/g, '');
+    const base = cleaned || fallback;
+    return base.slice(0, 12);
+  }
+
+  private normalizeTransactionDesc(value?: string, fallback = 'Checkout payment'): string {
+    const raw = String(value || '').trim();
+    const cleaned = raw.replace(/\s+/g, ' ').trim();
+    const base = cleaned || fallback;
+    return base.slice(0, 13);
   }
 
   private async linkOrderByBillRef(
@@ -197,6 +248,11 @@ export class MpesaService {
       if (found) return found;
     }
     return null;
+  }
+
+  private async findByCheckoutRequestId(checkoutRequestId?: string) {
+    if (!checkoutRequestId) return null;
+    return this.mpesaTxRepo.findOne({ where: { transactionId: checkoutRequestId } });
   }
 
   async registerC2BUrls(dto: C2BRegisterUrlsDto) {
@@ -363,6 +419,112 @@ export class MpesaService {
     tx.rawResponseJson = r;
     await this.mpesaTxRepo.save(tx);
     return data;
+  }
+
+  async stkPush(dto: StkPushRequestDto, userId?: string) {
+    const phone = this.normalizeMsisdn(dto.phone);
+
+    let order = null as Order | null;
+    if (dto.orderId) {
+      order = await this.orderRepo.findOne({ where: { id: dto.orderId } });
+      if (!order) throw new BadRequestException('Order not found');
+      if (userId && order.customerId && order.customerId !== userId) {
+        throw new ForbiddenException('Order does not belong to user');
+      }
+    }
+
+    const amountRaw = dto.amount ?? (order ? Number(order.grandTotal) : undefined);
+    const amount = Number.isFinite(Number(amountRaw)) ? Math.round(Number(amountRaw)) : NaN;
+    if (!amount || Number.isNaN(amount) || amount <= 0) {
+      throw new BadRequestException('Amount must be greater than zero');
+    }
+
+    const shortCode = dto.shortCode ?? this.shortcode;
+    const passkey = dto.passkey ?? this.passkey;
+    const timestamp = this.formatTimestamp();
+    const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
+
+    const accountReference = this.normalizeAccountReference(
+      dto.accountReference ?? order?.orderNumber ?? dto.orderId,
+      'Checkout',
+    );
+    const transactionDesc = this.normalizeTransactionDesc(
+      dto.transactionDesc ?? `Order ${order?.orderNumber ?? accountReference}`,
+      'Checkout payment',
+    );
+
+    const payload = {
+      BusinessShortCode: shortCode,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: 'CustomerPayBillOnline',
+      Amount: amount,
+      PartyA: phone,
+      PartyB: shortCode,
+      PhoneNumber: phone,
+      CallBackURL: dto.callbackUrl ?? this.buildCallbackUrl('/api/v1/mpesa/stk/callback'),
+      AccountReference: accountReference,
+      TransactionDesc: transactionDesc,
+    };
+
+    const tx = await this.mpesaTxRepo.save(
+      this.mpesaTxRepo.create({
+        type: MpesaTransactionType.STK,
+        status: MpesaTransactionStatus.PENDING,
+        orderId: order?.id ?? dto.orderId,
+        amount: String(amount),
+        msisdn: phone,
+        accountReference,
+        partyA: phone,
+        partyB: shortCode,
+        remarks: transactionDesc,
+        rawRequestJson: this.asStringRecord(payload),
+        rawResponseJson: {},
+        rawCallbackJson: {},
+      }),
+    );
+
+    const data = await this.darajaPost('/mpesa/stkpush/v1/processrequest', payload);
+    const r = this.asStringRecord(data);
+    tx.originatorConversationId = (r.MerchantRequestID as string) ?? tx.originatorConversationId;
+    tx.transactionId = (r.CheckoutRequestID as string) ?? tx.transactionId;
+    tx.resultCode =
+      typeof r.ResponseCode === 'string'
+        ? parseInt(r.ResponseCode, 10)
+        : (r.ResponseCode as any);
+    tx.resultDesc =
+      (r.ResponseDescription as string) ??
+      (r.CustomerMessage as string) ??
+      tx.resultDesc;
+    tx.rawResponseJson = r;
+    await this.mpesaTxRepo.save(tx);
+    return data;
+  }
+
+  async getStkStatus(orderId: string, userId?: string) {
+    const trimmed = String(orderId || '').trim();
+    if (!trimmed) throw new BadRequestException('Order id is required');
+
+    const order = await this.orderRepo.findOne({ where: { id: trimmed } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (userId && order.customerId && order.customerId !== userId) {
+      throw new ForbiddenException('Order does not belong to user');
+    }
+
+    const tx = await this.mpesaTxRepo.findOne({
+      where: { orderId: trimmed, type: MpesaTransactionType.STK },
+      order: { createdAt: 'DESC' },
+    });
+
+    return {
+      orderId: trimmed,
+      status: tx?.status ?? MpesaTransactionStatus.PENDING,
+      resultCode: tx?.resultCode ?? null,
+      resultDesc: tx?.resultDesc ?? null,
+      amount: tx?.amount ?? null,
+      msisdn: tx?.msisdn ?? null,
+      updatedAt: tx?.updatedAt ?? null,
+    };
   }
 
   // ---- Callback persistence helpers ----
@@ -645,6 +807,102 @@ export class MpesaService {
         }),
       );
     }
+    return { ResultCode: 0, ResultDesc: 'Received' };
+  }
+
+  async handleStkCallback(body: unknown) {
+    const raw = this.asStringRecord(body);
+    const stk = this.asStringRecord(this.asStringRecord(raw.Body).stkCallback);
+    const resultCode =
+      typeof stk.ResultCode === 'number'
+        ? stk.ResultCode
+        : typeof stk.ResultCode === 'string'
+          ? parseInt(stk.ResultCode, 10)
+          : undefined;
+    const resultDesc = stk.ResultDesc as string | undefined;
+    const checkoutRequestId = stk.CheckoutRequestID as string | undefined;
+    const merchantRequestId = stk.MerchantRequestID as string | undefined;
+
+    let amount: string | undefined;
+    let receiptNumber: string | undefined;
+    let phoneNumber: string | undefined;
+    const metadata = this.asStringRecord(stk.CallbackMetadata);
+    const items = metadata.Item as unknown[];
+    if (Array.isArray(items)) {
+      for (const item of items) {
+        const parsed = this.asStringRecord(item);
+        if (parsed.Name === 'Amount') amount = parsed.Value ? String(parsed.Value) : amount;
+        if (parsed.Name === 'MpesaReceiptNumber') receiptNumber = parsed.Value ? String(parsed.Value) : receiptNumber;
+        if (parsed.Name === 'PhoneNumber') phoneNumber = parsed.Value ? String(parsed.Value) : phoneNumber;
+      }
+    }
+
+    const existing = await this.findByCheckoutRequestId(checkoutRequestId);
+    if (existing) {
+      existing.resultCode = resultCode;
+      existing.resultDesc = resultDesc;
+      existing.status = resultCode === 0 ? MpesaTransactionStatus.SUCCESS : MpesaTransactionStatus.FAILED;
+      existing.transactionId = checkoutRequestId ?? existing.transactionId;
+      existing.originatorConversationId = merchantRequestId ?? existing.originatorConversationId;
+      existing.amount = amount ?? existing.amount;
+      existing.msisdn = phoneNumber ?? existing.msisdn;
+      existing.rawCallbackJson = raw;
+      await this.mpesaTxRepo.save(existing);
+
+      if (existing.orderId && resultCode === 0) {
+        try {
+          const order = await this.orderRepo.findOne({ where: { id: existing.orderId } });
+          if (order) {
+            const patch: Partial<Order> = {};
+            if (order.financialStatus !== FinancialStatus.PAID) {
+              patch.financialStatus = FinancialStatus.PAID;
+            }
+            if (order.status !== OrderStatus.CONFIRMED) {
+              patch.status = OrderStatus.CONFIRMED;
+            }
+            if (!order.confirmedAt) {
+              patch.confirmedAt = new Date();
+            }
+            if (Object.keys(patch).length > 0) {
+              await this.orderRepo.update({ id: order.id } as any, patch as any);
+            }
+          }
+        } catch {
+          this.logger.warn('Failed to update order after STK callback');
+        }
+
+        const payload: OrderPaymentSucceededEventPayload = {
+          orderId: existing.orderId,
+          msisdn: phoneNumber ?? existing.msisdn ?? undefined,
+          amount: amount ?? existing.amount ?? undefined,
+          transactionId: receiptNumber ?? checkoutRequestId ?? undefined,
+        };
+
+        await this.eventBus.emit<OrderPaymentSucceededEventPayload>(
+          ORDER_PAYMENT_SUCCEEDED_EVENT,
+          payload,
+        );
+      }
+
+      return { ResultCode: 0, ResultDesc: 'Received' };
+    }
+
+    await this.mpesaTxRepo.save(
+      this.mpesaTxRepo.create({
+        type: MpesaTransactionType.STK,
+        status: resultCode === 0 ? MpesaTransactionStatus.SUCCESS : MpesaTransactionStatus.FAILED,
+        originatorConversationId: merchantRequestId,
+        transactionId: checkoutRequestId,
+        resultCode,
+        resultDesc,
+        amount: amount ?? undefined,
+        msisdn: phoneNumber ?? undefined,
+        rawRequestJson: {},
+        rawResponseJson: {},
+        rawCallbackJson: raw,
+      }),
+    );
+
     return { ResultCode: 0, ResultDesc: 'Received' };
   }
 }

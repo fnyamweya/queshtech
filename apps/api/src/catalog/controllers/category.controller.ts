@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -28,6 +29,37 @@ import { CategoryService } from '../services/category.service';
 import { CreateCategoryDto } from '../dto/create-category.dto';
 import { UpdateCategoryDto } from '../dto/update-category.dto';
 import { FilterCategoryDto } from '../dto/filter-category.dto';
+
+const CATEGORY_PAYLOAD_EXAMPLE = {
+  taxonomyId: '5ba6168a-35c7-48e0-bf16-0ac614412374',
+  parentId: 'f7695065-9c97-4c81-9e25-36b1521c733b',
+  key: 'accessories',
+  slug: 'accessories',
+  isActive: true,
+  sortOrder: 0,
+  icon: 'lni-basket-shopping-3',
+  avatarUrl: 'https://cdn.example.com/categories/accessories-avatar.png',
+  imageUrl: 'https://cdn.example.com/categories/accessories.png',
+  name: 'Accessories',
+  description: 'Cables, cases, and everyday add-ons.',
+  seoTitle: 'Accessories | QueshTech',
+  seoDescription: 'Shop accessories for every device.',
+  synonyms: 'cables,cases,chargers',
+  keywords: 'accessories,devices,chargers',
+  highlight: false,
+  navPlacement: true,
+  featured: false,
+  translations: [
+    {
+      locale: 'en',
+      name: 'Accessories',
+      description: 'Cables, cases, and everyday add-ons.',
+      seoTitle: 'Accessories | QueshTech',
+      seoDescription: 'Shop accessories for every device.',
+      seoKeywords: ['accessories', 'devices', 'chargers'],
+    },
+  ],
+};
 
 @Controller('catalog/categories')
 @UsePipes(
@@ -49,6 +81,7 @@ export class CategoryController {
     permission: 'create',
   })
   @ApiOperation({ summary: 'Create category' })
+  @ApiBody({ type: CreateCategoryDto, examples: { payload: { value: CATEGORY_PAYLOAD_EXAMPLE } } })
   @ApiCreatedResponse({ description: 'Category created successfully' })
   async create(@Body() payload: CreateCategoryDto) {
     const category = await this.categoryService.create(payload);
@@ -89,6 +122,7 @@ export class CategoryController {
     permission: 'update',
   })
   @ApiOperation({ summary: 'Update category' })
+  @ApiBody({ type: UpdateCategoryDto, examples: { payload: { value: CATEGORY_PAYLOAD_EXAMPLE } } })
   @ApiOkResponse({ description: 'Category updated successfully' })
   async update(@Param('id') id: string, @Body() payload: UpdateCategoryDto) {
     const category = await this.categoryService.update(id, payload);

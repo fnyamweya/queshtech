@@ -77,10 +77,20 @@ export type CatalogProductSku = {
   prices?: CatalogProductPrice[]
 }
 
+export type CatalogProductImage = {
+  id?: string
+  url: string
+  alt?: string
+  skuId?: string
+  isPrimary?: boolean
+  sortOrder?: number
+}
+
 export type CatalogProduct = {
   id: string
   title: string
   description?: string
+  shortDescription?: string
   seoTitle?: string
   seoDescription?: string
   status: CatalogProductStatus
@@ -90,7 +100,7 @@ export type CatalogProduct = {
   categoryIds?: string[]
   optionDefinitions?: CatalogProductOptionDefinition[]
   availability?: CatalogProductAvailability
-  images?: string[]
+  images?: CatalogProductImage[]
   translations?: CatalogProductTranslation[]
   skus?: CatalogProductSku[]
   prices?: CatalogProductPrice[]
@@ -133,6 +143,7 @@ export type CatalogCollection = {
   bannerImageUrl?: string
   badge?: string
   isActive?: boolean
+  isHomepage?: boolean
   sortOrder?: number
   metaJson?: JsonObject
   categoryIds?: string[]

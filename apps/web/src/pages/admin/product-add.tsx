@@ -52,9 +52,7 @@ export function AdminProductAddPage() {
 
   return (
     <AdminLayout title="Add Product" description="Create a new product with SKUs, pricing, and availability.">
-      {isLoading ? (
-        <div className="text-sm text-muted-foreground">Loading…</div>
-      ) : loadError ? (
+      {isLoading ? null : loadError ? (
         <div className="text-sm text-destructive">{loadError}</div>
       ) : (
         <ProductEditorV2

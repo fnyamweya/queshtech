@@ -108,7 +108,7 @@ export class CheckoutService {
         CHECKOUT_QUEUE,
         EXPIRE_JOB,
         { sessionId: created.id },
-        { delay: this.ttlSeconds * 1000, jobId: `expire:${created.id}` },
+        { delay: this.ttlSeconds * 1000, jobId: `expire-${created.id}` },
       );
     }
 

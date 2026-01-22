@@ -134,6 +134,22 @@ export class ShippingAdminService {
     return deleted;
   }
 
+  async deleteZoneLocationForZone(zoneId: string, locationId?: string) {
+    if (!locationId) return false;
+
+    const existing = await this.zoneLocationRepo.findOne({
+      where: { zoneId, locationId },
+      select: { id: true } as any,
+    });
+
+    if (!existing) return false;
+
+    const res = await this.zoneLocationRepo.delete(existing.id);
+    const deleted = (res.affected || 0) > 0;
+    if (deleted) await this.invalidateShippingCaches();
+    return deleted;
+  }
+
   // Methods
   async createMethod(payload: CreateShippingMethodDto) {
     const method = this.methodRepo.create({

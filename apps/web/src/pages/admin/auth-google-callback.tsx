@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { apiRequest, extractAccessToken, extractRefreshToken } from '@/lib/api'
@@ -136,7 +135,6 @@ export function AdminGoogleAuthCallbackPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2 text-sm">
-            {status === 'working' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             <span className={status === 'error' ? 'text-destructive' : 'text-muted-foreground'}>{message}</span>
           </div>
 

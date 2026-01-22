@@ -1177,11 +1177,7 @@ export function AdminSettingsLocationsPage() {
                     <SelectValue placeholder="Select country" />
                   </SelectTrigger>
                   <SelectContent>
-                    {isLoadingCountries ? (
-                      <SelectItem value="__loading" disabled>
-                        Loading…
-                      </SelectItem>
-                    ) : countries.length ? (
+                    {countries.length ? (
                       countries.map((c) => (
                         <SelectItem key={c.code} value={c.code}>
                           {c.name} ({c.code})
@@ -1216,11 +1212,7 @@ export function AdminSettingsLocationsPage() {
           <CardContent className="p-0">
             <ScrollArea className="h-[520px]">
               <div className="p-3">
-                {isLoadingTree ? (
-                  <div className="px-2 py-6 text-sm text-muted-foreground">Loading locations…</div>
-                ) : (
-                  <TreeNode node={root} depth={0} />
-                )}
+                {isLoadingTree ? null : <TreeNode node={root} depth={0} />}
                 {search.trim() && matches.size === 0 ? (
                   <div className="px-2 py-6 text-sm text-muted-foreground">
                     No matches. Try a different term.
@@ -1379,7 +1371,7 @@ export function AdminSettingsLocationsPage() {
 
                     <MultiSelectAdd
                       label="Currencies"
-                      placeholder={isLoadingCurrencies ? 'Loading…' : 'Select currency'}
+                      placeholder="Select currency"
                       helperText="Optional. Uses the Currencies API list."
                       disabled={isLoadingCurrencies}
                       options={currencies
@@ -1471,7 +1463,7 @@ export function AdminSettingsLocationsPage() {
                         disabled={!includeDefaultPriceListId || isLoadingPriceLists}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder={isLoadingPriceLists ? 'Loading price lists…' : 'Select price list'} />
+                          <SelectValue placeholder="Select price list" />
                         </SelectTrigger>
                         <SelectContent>
                           {priceLists.map((pl) => (
@@ -1690,9 +1682,7 @@ export function AdminSettingsLocationsPage() {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <Badge variant="secondary">{editCountryCode || selectedNode.code || root.code}</Badge>
-                                {isLoadingEditCountryConfig ? (
-                                  <span className="text-sm text-muted-foreground">Loading…</span>
-                                ) : null}
+                                {isLoadingEditCountryConfig ? null : null}
                               </div>
                               <div className="flex items-center gap-2">
                                 <Button
@@ -1717,7 +1707,7 @@ export function AdminSettingsLocationsPage() {
                               <div className="space-y-2">
                                 <MultiSelectAdd
                                   label="Currencies"
-                                  placeholder={isLoadingCurrencies ? 'Loading…' : 'Select currency'}
+                                  placeholder="Select currency"
                                   helperText="Optional. Uses the Currencies API list."
                                   disabled={isLoadingCurrencies}
                                   options={currencies
@@ -1753,7 +1743,7 @@ export function AdminSettingsLocationsPage() {
                                   disabled={!editIncludeDefaultPriceListId || isLoadingPriceLists}
                                 >
                                   <SelectTrigger>
-                                    <SelectValue placeholder={isLoadingPriceLists ? 'Loading…' : 'Select price list'} />
+                                    <SelectValue placeholder="Select price list" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {priceLists.map((pl) => (

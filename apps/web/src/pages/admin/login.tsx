@@ -136,7 +136,7 @@ export function AdminLoginPage() {
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              Sign In
             </Button>
 
             <Button

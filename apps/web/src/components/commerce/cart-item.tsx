@@ -24,10 +24,12 @@ export function CartItem({
   className,
 }: CartItemProps) {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
   const image = item.product.images[0]
   const variantText = Object.entries(item.selectedVariants)
     .map(([key, value]) => `${key}: ${value}`)
     .join(', ')
+  const skuLabel = item.skuCode || item.productSkuId
 
   const handleRemoveClick = () => {
     setShowConfirmDialog(true)
@@ -58,6 +60,7 @@ export function CartItem({
                 {item.product.name}
               </h4>
             </Link>
+            {skuLabel ? <p className="text-xs text-muted-foreground mt-0.5">SKU: {skuLabel}</p> : null}
             {variantText && (
               <p className="text-xs text-muted-foreground mt-0.5">{variantText}</p>
             )}
@@ -114,6 +117,7 @@ export function CartItem({
               <p className="text-xs text-muted-foreground uppercase mb-1">
                 {item.product.brand}
               </p>
+              {skuLabel ? <p className="text-xs text-muted-foreground">SKU: {skuLabel}</p> : null}
               {variantText && (
                 <p className="text-sm text-muted-foreground">{variantText}</p>
               )}
@@ -141,6 +145,37 @@ export function CartItem({
               size="md"
               className="font-semibold"
             />
+          </div>
+
+          <div className="mt-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="px-0 text-xs text-muted-foreground"
+              onClick={() => setShowDetails((prev) => !prev)}
+            >
+              {showDetails ? 'Hide details' : 'View details'}
+            </Button>
+
+            {showDetails ? (
+              <div className="mt-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
+                {skuLabel ? <div>SKU: <span className="font-medium text-foreground">{skuLabel}</span></div> : null}
+                {variantText ? <div>Options: <span className="font-medium text-foreground">{variantText}</span></div> : null}
+                <div className="flex items-center justify-between">
+                  <span>Unit price</span>
+                  <Price price={item.price} currency={item.product.currency} size="sm" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Quantity</span>
+                  <span className="font-medium text-foreground">{item.quantity}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Subtotal</span>
+                  <Price price={item.subtotal} currency={item.product.currency} size="sm" />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

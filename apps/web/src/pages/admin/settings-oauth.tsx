@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, KeyRound, Loader2, Plus, RefreshCcw, Save, X } from 'lucide-react'
+import { CornerDownRight, KeyRound, Plus, RefreshCcw, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Badge } from '@/components/ui/badge'
@@ -488,7 +488,7 @@ export function AdminSettingsOAuthPage() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
-              {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-2" />}
+              <RefreshCcw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
           </div>
@@ -649,7 +649,6 @@ export function AdminSettingsOAuthPage() {
                     <Popover open={isRolesPickerOpen} onOpenChange={setIsRolesPickerOpen}>
                       <PopoverTrigger asChild>
                         <Button type="button" variant="outline" disabled={isLoadingRoles || isLoading}>
-                          {isLoadingRoles ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                           Select roles
                         </Button>
                       </PopoverTrigger>
@@ -722,7 +721,7 @@ export function AdminSettingsOAuthPage() {
 
                   <div className="flex items-center justify-end gap-2">
                     <Button type="button" onClick={saveGoogleProfile} disabled={isSavingGoogleProfile || isLoading}>
-                      {isSavingGoogleProfile ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                      <Save className="h-4 w-4 mr-2" />
                       Save profile
                     </Button>
                   </div>
@@ -746,7 +745,7 @@ export function AdminSettingsOAuthPage() {
                         onClick={saveGoogleSecret}
                         disabled={!selectedGoogleProfileId || isSavingGoogleSecret || isLoading}
                       >
-                        {isSavingGoogleSecret ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                        <Save className="h-4 w-4 mr-2" />
                         Save secret
                       </Button>
                     </div>
@@ -801,7 +800,7 @@ export function AdminSettingsOAuthPage() {
                     )}
                   </div>
                   <Button type="button" onClick={saveApple} disabled={isSavingApple}>
-                    {isSavingApple ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    <Save className="h-4 w-4 mr-2" />
                     Save
                   </Button>
                 </div>
@@ -820,7 +819,7 @@ export function AdminSettingsOAuthPage() {
                   </div>
                   <div className="flex items-end">
                     <Button type="button" variant="secondary" onClick={saveAppleSecret} disabled={isSavingAppleSecret}>
-                      {isSavingAppleSecret ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                      <Save className="h-4 w-4 mr-2" />
                       Save key
                     </Button>
                   </div>

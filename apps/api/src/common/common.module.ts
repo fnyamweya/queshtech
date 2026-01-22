@@ -5,11 +5,13 @@ import { HttpExceptionFilter } from './filters/http-exception.filter';
 import { S3ClientUtils } from './utils/s3-client.utils';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Setting } from 'src/setting/entities/setting.entity';
+import { Channel } from 'src/channels/entities/channel.entity';
 import { EmailServiceUtils } from './utils/email-service.utils';
 import { SettingCryptoService } from './utils/setting-crypto.service';
 import { CommonUploadController } from './controllers/common-upload.controller';
 import { ApiClientModule } from './api-client/api-client.module';
 import { RequestContextInterceptor } from './request-context/request-context.interceptor';
+import { ChannelContextInterceptor } from './request-context/channel-context.interceptor';
 import { RedisModule } from './redis/redis.module';
 import { AppCacheModule } from './cache/app-cache.module';
 import { S3ConfigService } from './s3/s3-config.service';
@@ -19,7 +21,7 @@ import { RateLimitService } from './security/rate-limit.service';
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Setting]),
+    TypeOrmModule.forFeature([Setting, Channel]),
     ApiClientModule,
     RedisModule,
     AppCacheModule,
@@ -30,6 +32,10 @@ import { RateLimitService } from './security/rate-limit.service';
     {
       provide: APP_INTERCEPTOR,
       useClass: RequestContextInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ChannelContextInterceptor,
     },
     S3ConfigService,
     S3ClientUtils,

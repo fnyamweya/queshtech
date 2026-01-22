@@ -3,6 +3,7 @@
 
 @import 'tailwindcss';
 @import "tw-animate-css";
+@import "lineicons/dist/lineicons.css";
 @import './index.css';
 
 /*

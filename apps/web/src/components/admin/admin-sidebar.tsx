@@ -125,18 +125,21 @@ export function AdminSidebar() {
 
       <SidebarContent>
         {AXIS_NAV.map((group) => (
-          <SidebarGroup key={group.label}>
+          <SidebarGroup key={group.id}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarMenu>
               {group.items.map((item) => {
                 if (item.children?.length) {
-                  return CollapsibleNavItem({
-                    id: item.id,
-                    title: item.title,
-                    icon: item.icon,
-                    active: isActive(item.href) || item.children.some((c) => isActive(c.href)),
-                    items: item.children.map((c) => ({ title: c.title, href: c.href })),
-                  })
+                  return (
+                    <CollapsibleNavItem
+                      key={item.id}
+                      id={item.id}
+                      title={item.title}
+                      icon={item.icon}
+                      active={isActive(item.href) || item.children.some((c) => isActive(c.href))}
+                      items={item.children.map((c) => ({ title: c.title, href: c.href }))}
+                    />
+                  )
                 }
 
                 const Icon = item.icon

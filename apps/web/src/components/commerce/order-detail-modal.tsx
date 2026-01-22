@@ -46,10 +46,13 @@ const statusIcons = {
 export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalProps) {
   if (!order) return null
 
-  const formatPrice = (price: number) => {
+  const orderCurrency = order.items?.[0]?.product?.currency || ''
+
+  const formatPrice = (price: number, currency?: string | null) => {
+    const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
     return new Intl.NumberFormat('en-KE', {
-      style: 'currency',
-      currency: 'KES',
+      style: hasCurrency ? 'currency' : 'decimal',
+      currency: hasCurrency ? currency : undefined,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(price)
@@ -156,7 +159,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                       )}
                       <div className="flex items-center gap-3 mt-2">
                         <span className="text-sm text-muted-foreground">Qty: {item.quantity}</span>
-                        <span className="font-semibold">{formatPrice(item.price)}</span>
+                        <span className="font-semibold">{formatPrice(item.price, item.product?.currency || orderCurrency)}</span>
                       </div>
                     </div>
                   </motion.div>
@@ -229,26 +232,26 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
             <div className="space-y-2.5">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatPrice(order.subtotal)}</span>
+                <span>{formatPrice(order.subtotal, orderCurrency)}</span>
               </div>
               {order.discount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Discount</span>
-                  <span className="text-destructive">-{formatPrice(order.discount)}</span>
+                  <span className="text-destructive">-{formatPrice(order.discount, orderCurrency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Shipping</span>
-                <span>{order.shipping === 0 ? 'Free' : formatPrice(order.shipping)}</span>
+                <span>{order.shipping === 0 ? 'Free' : formatPrice(order.shipping, orderCurrency)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Tax</span>
-                <span>{formatPrice(order.tax)}</span>
+                <span>{formatPrice(order.tax, orderCurrency)}</span>
               </div>
               <Separator />
               <div className="flex justify-between text-lg font-bold">
                 <span>Total</span>
-                <span className="text-primary">{formatPrice(order.total)}</span>
+                <span className="text-primary">{formatPrice(order.total, orderCurrency)}</span>
               </div>
             </div>
           </motion.div>

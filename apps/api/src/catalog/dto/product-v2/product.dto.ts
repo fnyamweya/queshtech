@@ -33,6 +33,17 @@ export interface ProductDTO {
   // --------------------------------------------------
   name: LocalizedString;
   description?: LocalizedString;
+  shortDescription?: LocalizedString;
+
+  // --------------------------------------------------
+  // 3b. Option Definitions (for SKU variations)
+  // --------------------------------------------------
+  optionDefinitions?: Array<{
+    key: string;
+    label?: string;
+    allowedValues?: string[];
+    required?: boolean;
+  }>;
 
   // --------------------------------------------------
   // 4. Dynamic Attributes (Schema-Driven)
@@ -55,6 +66,18 @@ export interface ProductDTO {
   status: ProductStatus;
 
   // --------------------------------------------------
+  // 7. Media
+  // --------------------------------------------------
+  images?: Array<{
+    id: ID;
+    url: string;
+    alt?: string;
+    skuId?: ID;
+    isPrimary?: boolean;
+    sortOrder?: number;
+  }>;
+
+  // --------------------------------------------------
   // 9. Contextual Overrides
   // --------------------------------------------------
   overrides?: ContextualOverrideDTO[];
@@ -64,6 +87,22 @@ export interface ProductDTO {
     code: string;
     name?: LocalizedText;
     attributes?: Record<string, unknown>;
+    options?: Record<string, string>;
+    availability?: Record<string, unknown>;
+    isDefault?: boolean;
+    prices?: Array<{
+      priceListId: ID;
+      currencyCode: string;
+      unitPrice: string;
+      compareAtPrice?: string;
+    }>;
+  }>;
+
+  prices?: Array<{
+    priceListId: ID;
+    currencyCode: string;
+    unitPrice: string;
+    compareAtPrice?: string;
   }>;
 }
 

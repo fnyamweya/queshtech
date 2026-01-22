@@ -4,6 +4,7 @@ import { endpoints } from '@/lib/endpoints'
 import type {
   CatalogProduct,
   CatalogProductAvailability,
+  CatalogProductImage,
   CatalogProductOptionDefinition,
   CatalogProductPrice,
   CatalogProductSku,
@@ -131,6 +132,35 @@ function toAvailability(raw: any): CatalogProductAvailability | undefined {
   }
 }
 
+function toProductImage(raw: any): CatalogProductImage | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    const url = raw.trim()
+    if (!url) return null
+    return { id: url, url }
+  }
+  if (typeof raw !== 'object') return null
+
+  const url = String(raw.url || raw.src || raw.imageUrl || '').trim()
+  if (!url) return null
+
+  const id = String(raw.id || raw._id || url).trim()
+  const skuId = typeof raw.skuId === 'string' ? raw.skuId : typeof raw.sku_id === 'string' ? raw.sku_id : undefined
+  const alt = typeof raw.alt === 'string' ? raw.alt : undefined
+  const isPrimary = Boolean(raw.isPrimary ?? raw.is_primary)
+  const sortOrderRaw = raw.sortOrder ?? raw.sort_order
+  const sortOrder = typeof sortOrderRaw === 'number' ? sortOrderRaw : typeof sortOrderRaw === 'string' ? Number(sortOrderRaw) : undefined
+
+  return {
+    id,
+    url,
+    alt,
+    skuId,
+    isPrimary,
+    sortOrder: typeof sortOrder === 'number' && Number.isFinite(sortOrder) ? sortOrder : undefined,
+  }
+}
+
 function toProduct(raw: ApiProductLike): CatalogProduct | null {
   if (!raw || typeof raw !== 'object') return null
 
@@ -157,12 +187,21 @@ function toProduct(raw: ApiProductLike): CatalogProduct | null {
   const prices = pricesRaw.map(toPrice).filter(Boolean) as CatalogProductPrice[]
 
   const imagesRaw = Array.isArray(raw.images) ? raw.images : []
-  const images = imagesRaw.map((u: any) => (typeof u === 'string' ? u : u?.url)).filter(Boolean) as string[]
+  const images = (imagesRaw.map(toProductImage).filter(Boolean) as CatalogProductImage[]).sort((a, b) => {
+    const ap = Boolean(a.isPrimary)
+    const bp = Boolean(b.isPrimary)
+    if (ap !== bp) return ap ? -1 : 1
+    const ao = typeof a.sortOrder === 'number' ? a.sortOrder : 0
+    const bo = typeof b.sortOrder === 'number' ? b.sortOrder : 0
+    if (ao !== bo) return ao - bo
+    return String(a.url).localeCompare(String(b.url))
+  })
 
   return {
     id,
     title,
     description: typeof raw.description === 'string' ? raw.description : undefined,
+    shortDescription: typeof raw.shortDescription === 'string' ? raw.shortDescription : undefined,
     seoTitle: typeof raw.seoTitle === 'string' ? raw.seoTitle : undefined,
     seoDescription: typeof raw.seoDescription === 'string' ? raw.seoDescription : undefined,
     status: toStatus(raw.status),

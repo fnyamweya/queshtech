@@ -14,6 +14,22 @@ export function useCart() {
   
   const [cart, setCart] = useStorage<Cart>('cart', defaultCart)
 
+  const resolveSkuFromProduct = (product: Product, selectedVariants: Record<string, string>) => {
+    const skus = Array.isArray(product.skus) ? product.skus : []
+    if (!skus.length) return null
+
+    const variantKeys = Object.keys(selectedVariants || {})
+    if (variantKeys.length) {
+      const match = skus.find((sku) => {
+        const opts = sku.options || {}
+        return variantKeys.every((key) => String(opts[key] || '').trim() === String(selectedVariants[key] || '').trim())
+      })
+      if (match) return match
+    }
+
+    return skus.find((sku) => sku.isDefault) || skus[0] || null
+  }
+
   const calculateTotals = (items: CartItem[], discount = 0): Cart => {
     const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0)
     const tax = subtotal * 0.08
@@ -30,12 +46,30 @@ export function useCart() {
     }
   }
 
-  const addToCart = (product: Product, selectedVariants: Record<string, string> = {}) => {
+  const addToCart = (
+    product: Product,
+    selectedVariants: Record<string, string> = {},
+    quantity: number = 1,
+    skuId?: string
+  ) => {
+    const qty = Number.isFinite(quantity) ? Math.max(1, Math.floor(quantity)) : 1
+
+    const resolvedSku = skuId
+      ? { id: skuId, code: product.skus?.find((s) => s.id === skuId)?.code }
+      : resolveSkuFromProduct(product, selectedVariants)
+    if (!resolvedSku?.id) {
+      toast.error('Select a product option', {
+        description: 'Please open the product and pick a variation before adding to cart.',
+      })
+      return
+    }
+
     setCart((currentCart) => {
       const current = currentCart || defaultCart
       const existingItemIndex = current.items.findIndex(
         (item) =>
           item.product.id === product.id &&
+          item.productSkuId === resolvedSku.id &&
           JSON.stringify(item.selectedVariants) === JSON.stringify(selectedVariants)
       )
 
@@ -46,8 +80,8 @@ export function useCart() {
           index === existingItemIndex
             ? {
                 ...item,
-                quantity: item.quantity + 1,
-                subtotal: (item.quantity + 1) * item.price,
+                quantity: item.quantity + qty,
+                subtotal: (item.quantity + qty) * item.price,
               }
             : item
         )
@@ -55,16 +89,18 @@ export function useCart() {
         const newItem: CartItem = {
           id: `${product.id}-${Date.now()}`,
           product,
-          quantity: 1,
+          productSkuId: resolvedSku.id,
+          skuCode: resolvedSku.code,
+          quantity: qty,
           selectedVariants,
           price: product.price,
-          subtotal: product.price,
+          subtotal: qty * product.price,
         }
         updatedItems = [...current.items, newItem]
       }
 
       toast.success('Added to cart', {
-        description: product.name,
+        description: qty === 1 ? product.name : `${qty} × ${product.name}`,
       })
 
       return calculateTotals(updatedItems, current.discount)

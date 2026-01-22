@@ -65,19 +65,20 @@ export function ProductCardActions<TProduct>({
   placement: 'overlay' | 'inline'
   className?: string
 }): ReactNode {
-  const custom = resolveSlot(slot, ctx)
-  if (custom) return <>{custom}</>
-
   const actions = ctx.behavior.actions
   const purchase = ctx.behavior.purchase
   const interaction = ctx.behavior.interaction
   const telemetry = ctx.behavior.telemetry
+  const [inlineFeedback, setInlineFeedback] = useState<string | null>(null)
 
   const effectiveMode = useMemo(() => {
     const mode = actions.mode
     if (mode === 'hover' && ctx.isTouch) return 'always'
     return mode
   }, [actions.mode, ctx.isTouch])
+
+  const custom = resolveSlot(slot, ctx)
+  if (custom) return <>{custom}</>
 
   const showAdd = Boolean(actions.showAdd && purchase.onPurchase)
   const showQuickView = Boolean(actions.showQuickView && actions.onQuickView)
@@ -88,8 +89,6 @@ export function ProductCardActions<TProduct>({
 
   const showAny = effectiveMode !== 'none' && (showAdd || showQuickView || showWishlist || showCompare)
   if (!showAny) return null
-
-  const [inlineFeedback, setInlineFeedback] = useState<string | null>(null)
 
   const wishlisted = Boolean(actions.wishlisted)
 
@@ -169,7 +168,10 @@ export function ProductCardActions<TProduct>({
   const container =
     placement === 'overlay'
       ? cn(
-          'absolute left-3 right-3 bottom-3 z-20 flex items-center gap-2',
+          cn(
+            ctx.appearance.density === 'compact' ? 'absolute left-2 right-2 bottom-2' : 'absolute left-3 right-3 bottom-3',
+            'z-20 flex items-center gap-2'
+          ),
           effectiveMode === 'always'
             ? 'opacity-100 translate-y-0'
             : cn(
@@ -193,10 +195,10 @@ export function ProductCardActions<TProduct>({
   return (
     <div className={cn(container, className)}>
       {showQty ? (
-        <div className="flex items-center rounded-full border border-border bg-background/70 backdrop-blur-sm">
+        <div className="flex items-center rounded-md border border-border bg-background/70 backdrop-blur-sm">
           <button
             type="button"
-            className="h-9 w-9 rounded-full text-sm text-muted-foreground hover:text-foreground disabled:opacity-40"
+            className="h-9 w-9 rounded-md text-sm text-muted-foreground hover:text-foreground cursor-pointer transition-[transform,color] active:translate-y-px active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -211,7 +213,7 @@ export function ProductCardActions<TProduct>({
           <span className="w-6 text-center text-sm font-semibold tabular-nums">{ctx.quantity}</span>
           <button
             type="button"
-            className="h-9 w-9 rounded-full text-sm text-muted-foreground hover:text-foreground disabled:opacity-40"
+            className="h-9 w-9 rounded-md text-sm text-muted-foreground hover:text-foreground cursor-pointer transition-[transform,color] active:translate-y-px active:scale-[0.99] disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -229,7 +231,7 @@ export function ProductCardActions<TProduct>({
       {showAdd ? (
         <Button
           size="sm"
-          className={cn('rounded-full', placement === 'overlay' ? 'flex-1' : '')}
+          className={cn('rounded-md', placement === 'overlay' ? 'flex-1' : '')}
           disabled={!canPurchase}
           onClick={(e) => {
             e.preventDefault()
@@ -246,7 +248,7 @@ export function ProductCardActions<TProduct>({
         <Button
           size="sm"
           variant="secondary"
-          className={cn('rounded-full', placement === 'overlay' ? '' : '')}
+          className={cn('rounded-md', placement === 'overlay' ? '' : '')}
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -263,7 +265,7 @@ export function ProductCardActions<TProduct>({
         <Button
           size="sm"
           variant="secondary"
-          className="rounded-full"
+          className="rounded-md"
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -280,7 +282,7 @@ export function ProductCardActions<TProduct>({
         <Button
           size="sm"
           variant={compareSelected ? 'default' : 'secondary'}
-          className="rounded-full"
+          className="rounded-md"
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()

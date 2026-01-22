@@ -92,6 +92,14 @@ export class CreateCategoryDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Show category on homepage',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isHomepage?: boolean;
+
+  @ApiPropertyOptional({
     description: "Status ('active'|'inactive') (admin UI)",
     example: 'active',
   })

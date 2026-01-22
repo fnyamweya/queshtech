@@ -1,9 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { Loader2, Upload, X } from 'lucide-react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { LniIcon } from '@/components/common/lni-icon'
 import { createApiClient } from '@/lib/api-client'
 import { endpoints } from '@/lib/endpoints'
 
@@ -140,6 +140,7 @@ export type CommonUploadProps = {
   description?: string
   accept?: string
   multiple?: boolean
+  maxFiles?: number
   disabled?: boolean
   mode?: 'immediate' | 'deferred'
   endpoint?: string
@@ -149,6 +150,8 @@ export type CommonUploadProps = {
   isPublic?: boolean
   isPublicFieldName?: string
   imagesOnly?: boolean
+  existingUrls?: string[]
+  onExistingUrlsChange?: (urls: string[]) => void
   pollJob?: boolean
   pollIntervalMs?: number
   pollTimeoutMs?: number
@@ -157,7 +160,12 @@ export type CommonUploadProps = {
 }
 
 export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(function CommonUpload(props, ref) {
-  const api = useMemo(() => createApiClient({ token: props.token }), [props.token])
+  const folder = props.folder
+  const token = props.token ?? null
+  const isPublic = props.isPublic
+  const onUploaded = props.onUploaded
+
+  const api = useMemo(() => createApiClient({ token }), [token])
 
   const endpoint = props.endpoint || endpoints.commonUploads.upload
   const jobEndpoint = props.jobEndpoint || endpoints.commonUploads.job
@@ -165,6 +173,7 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
   const fileFieldName = props.fileFieldName || 'files'
   const isPublicFieldName = props.isPublicFieldName || 'isPublic'
   const imagesOnly = Boolean(props.imagesOnly)
+  const accept = props.accept || (imagesOnly ? 'image/*' : undefined)
   const pollJob = props.pollJob !== false
   const mode = props.mode ?? 'immediate'
   const pollIntervalMs = props.pollIntervalMs ?? 1200
@@ -209,7 +218,8 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
     }
 
     const list = Array.from(next)
-    const selected = props.multiple ? list : [list[0]]
+    const maxFiles = typeof props.maxFiles === 'number' && props.maxFiles > 0 ? props.maxFiles : props.multiple ? list.length : 1
+    const selected = (props.multiple ? list : [list[0]]).slice(0, maxFiles)
 
     if (imagesOnly) {
       const nonImages = selected.filter((f) => !(typeof f.type === 'string' && f.type.startsWith('image/')))
@@ -225,14 +235,14 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
     setFiles(selected)
   }
 
-  const clear = () => setFiles([])
+  const clear = useCallback(() => setFiles([]), [])
 
-  const clearJob = () => {
+  const clearJob = useCallback(() => {
     pollAbortRef.current?.abort()
     pollAbortRef.current = null
-  }
+  }, [])
 
-  const pollJobUntilDone = async (nextJobId: string) => {
+  const pollJobUntilDone = useCallback(async (nextJobId: string) => {
     const startedAt = Date.now()
     pollAbortRef.current?.abort()
     const abort = new AbortController()
@@ -245,7 +255,7 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
 
       const resp = await api.requestRaw<unknown>(jobEndpoint(nextJobId), {
         method: 'GET',
-        token: props.token ?? null,
+        token,
         signal: abort.signal,
       })
 
@@ -260,9 +270,9 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
     }
 
     throw new Error('Upload job cancelled')
-  }
+  }, [api, jobEndpoint, pollIntervalMs, pollTimeoutMs, token])
 
-  const uploadSelected = async (): Promise<{ urls: string[]; rawResponse: unknown }> => {
+  const uploadSelected = useCallback(async (): Promise<{ urls: string[]; rawResponse: unknown }> => {
     if (!files.length) throw new Error('No files selected')
 
     if (imagesOnly) {
@@ -276,16 +286,16 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
     clearJob()
     try {
       const form = new FormData()
-      form.append(folderFieldName, props.folder)
-      if (typeof props.isPublic === 'boolean') {
-        form.append(isPublicFieldName, String(props.isPublic))
+      form.append(folderFieldName, folder)
+      if (typeof isPublic === 'boolean') {
+        form.append(isPublicFieldName, String(isPublic))
       }
       files.forEach((file) => form.append(fileFieldName, file))
 
       const uploadResp = await api.requestRaw<unknown>(endpoint, {
         method: 'POST',
         body: form,
-        token: props.token ?? null,
+        token,
       })
 
       // New contract: upload creates a background job.
@@ -301,7 +311,7 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
         const urls = extractUrls(jobResp)
         if (!urls.length) throw new Error('Upload completed, but no URL returned')
 
-        props.onUploaded(urls, jobResp)
+        onUploaded(urls, jobResp)
         clear()
         if (inputRef.current) inputRef.current.value = ''
         return { urls, rawResponse: jobResp }
@@ -311,14 +321,14 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
       const urls = extractUrls(uploadResp)
       if (!urls.length) throw new Error('Upload succeeded, but no URL returned')
 
-      props.onUploaded(urls, uploadResp)
+      onUploaded(urls, uploadResp)
       clear()
       if (inputRef.current) inputRef.current.value = ''
       return { urls, rawResponse: uploadResp }
     } finally {
       setIsUploading(false)
     }
-  }
+  }, [api, clear, clearJob, endpoint, fileFieldName, files, folder, folderFieldName, imagesOnly, isPublic, isPublicFieldName, onUploaded, pollJob, pollJobUntilDone, token])
 
   useImperativeHandle(
     ref,
@@ -330,7 +340,7 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
       },
       getFiles: () => files,
     }),
-    [files]
+    [files, uploadSelected]
   )
 
   const onUploadClick = async () => {
@@ -352,43 +362,136 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
     return `${files.length} files selected`
   }, [files])
 
+  const existingImages = (props.existingUrls || []).filter(isNonEmptyString)
+
   return (
     <div className="space-y-2">
       {props.label ? <Label>{props.label}</Label> : null}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div
+        className={
+          props.disabled || isUploading
+            ? 'rounded-md border border-dashed bg-muted/20 p-4 opacity-70'
+            : 'rounded-md border border-dashed bg-muted/10 p-4 cursor-pointer hover:bg-muted/20 transition-colors'
+        }
+        onClick={() => {
+          if (props.disabled || isUploading) return
+          inputRef.current?.click()
+        }}
+        onDragOver={(e) => {
+          if (props.disabled || isUploading) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+        }}
+        onDrop={(e) => {
+          if (props.disabled || isUploading) return
+          e.preventDefault()
+          onPickFiles(e.dataTransfer.files)
+        }}
+        role="button"
+        tabIndex={props.disabled || isUploading ? -1 : 0}
+        onKeyDown={(e) => {
+          if (props.disabled || isUploading) return
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault()
+          inputRef.current?.click()
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5">
+            <LniIcon name={isUploading ? 'lni-spinner-3' : 'lni-upload-1'} spin={isUploading} size={18} className="text-muted-foreground" />
+          </div>
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="text-sm font-medium">
+              {isUploading ? 'Uploading…' : props.multiple ? 'Drop files here' : 'Drop a file here'}
+              <span className="text-muted-foreground font-normal"> or click to browse</span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {imagesOnly ? 'Images only' : 'Any file type'}{accept ? ` · ${accept}` : ''}{props.maxFiles ? ` · Up to ${props.maxFiles}` : ''}
+            </div>
+          </div>
+          <div className="shrink-0">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={props.disabled || isUploading}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (props.disabled || isUploading) return
+                inputRef.current?.click()
+              }}
+            >
+              Choose
+            </Button>
+          </div>
+        </div>
         <Input
           ref={inputRef}
           type="file"
-          accept={props.accept}
+          accept={accept}
           multiple={Boolean(props.multiple)}
           disabled={props.disabled || isUploading}
           onChange={(e) => onPickFiles(e.target.files)}
-          className="sm:flex-1"
+          className="hidden"
         />
         <div className="flex items-center gap-2">
           {mode === 'immediate' ? (
-            <Button type="button" onClick={onUploadClick} disabled={props.disabled || isUploading || !files.length}>
-              {isUploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+            <Button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onUploadClick()
+              }}
+              disabled={props.disabled || isUploading || !files.length}
+            >
+              <LniIcon name={isUploading ? 'lni-spinner-3' : 'lni-cloud-upload'} spin={isUploading} size={16} className="mr-2" />
               {isUploading ? 'Uploading…' : 'Upload'}
             </Button>
           ) : null}
           <Button
             type="button"
             variant="outline"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation()
               clear()
               if (inputRef.current) inputRef.current.value = ''
             }}
             disabled={props.disabled || isUploading || !files.length}
           >
-            <X className="h-4 w-4 mr-2" />
+            <LniIcon name="lni-trash-3" size={16} className="mr-2" />
             Clear
           </Button>
         </div>
       </div>
 
       {props.description ? <div className="text-xs text-muted-foreground">{props.description}</div> : null}
+
+      {imagesOnly && existingImages.length ? (
+        <div className="space-y-2">
+          <div className="text-xs text-muted-foreground">Current</div>
+          <div className="flex flex-wrap gap-3">
+            {existingImages.map((url, idx) => (
+              <div key={`${url}-${idx}`} className="relative h-20 w-20 overflow-hidden rounded-md border bg-muted/20">
+                <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                {props.onExistingUrlsChange ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="absolute right-1 top-1 h-7 w-7"
+                    onClick={() => props.onExistingUrlsChange?.(existingImages.filter((_, i) => i !== idx))}
+                    disabled={props.disabled || isUploading}
+                    aria-label="Remove current image"
+                  >
+                    <LniIcon name="lni-trash-3" size={14} />
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {imagesOnly && previews.length ? (
         <div className="flex flex-wrap gap-3">
@@ -424,7 +527,7 @@ export const CommonUpload = forwardRef<CommonUploadHandle, CommonUploadProps>(fu
                 onClick={() => setFiles((curr) => curr.filter((_, i) => i !== idx))}
                 disabled={props.disabled}
               >
-                <X className="h-4 w-4" />
+                <LniIcon name="lni-trash-3" size={14} />
               </Button>
             </div>
           ))}

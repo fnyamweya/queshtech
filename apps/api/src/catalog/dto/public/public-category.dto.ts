@@ -36,4 +36,7 @@ export class PublicCategoryDto {
 
   @ApiProperty()
   isLeaf: boolean;
+
+  @ApiPropertyOptional()
+  isHomepage?: boolean;
 }

@@ -218,14 +218,14 @@ export function AdminSettingsCurrenciesPage() {
                 <CardTitle>Currencies</CardTitle>
                 <Badge variant="secondary">{currencies.length}</Badge>
               </div>
-              <CardDescription>{isLoading ? 'Loading…' : error ? error : 'Search and select a currency to edit.'}</CardDescription>
+              <CardDescription>{error ? error : 'Search and select a currency to edit.'}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Command className="rounded-md border">
                 <CommandInput placeholder="Search by code, name, symbol…" value={query} onValueChange={setQuery} />
                 <CommandList>
                   <ScrollArea className="h-[360px]">
-                    {visible.length === 0 ? <CommandEmpty>{isLoading ? 'Loading…' : 'No currencies found.'}</CommandEmpty> : null}
+                    {visible.length === 0 && !isLoading ? <CommandEmpty>No currencies found.</CommandEmpty> : null}
                     {visible.map((c) => {
                       const isSelected = c.code === draftCode
                       return (

@@ -78,6 +78,12 @@ export function AdminSettingsPage() {
           cta: 'Open M-Pesa',
         },
         {
+          title: 'Payment Methods',
+          description: 'Configure Paystack, Tingg, and other payment method settings and status.',
+          href: '/axis/settings/payments',
+          cta: 'Manage Payments',
+        },
+        {
           title: 'Algolia (Search)',
           description: 'Configure full-text catalog search for the storefront (products only).',
           href: '/axis/settings/algolia',

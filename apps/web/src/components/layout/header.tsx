@@ -1,6 +1,6 @@
 import { useState, useEffect, forwardRef, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import { Link, useLocation } from 'wouter'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
@@ -208,12 +208,24 @@ export function Header({
             <div className="hidden md:flex items-center gap-1">
               {isAuthenticated ? (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <HeaderTwoLineItem
-                      top={`Hi${user?.firstName ? `, ${user.firstName}` : ''}`}
-                      bottom="Account & Lists"
-                      rightIcon={<CaretDown size={14} weight="bold" />}
-                    />
+                  <DropdownMenuTrigger
+                    type="button"
+                    className={cn(
+                      'rounded-md px-3 py-2 text-left transition-colors',
+                      'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+                    )}
+                  >
+                    <div className="flex items-end justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] leading-none text-muted-foreground truncate">
+                          {`Hi${user?.firstName ? `, ${user.firstName}` : ''}`}
+                        </div>
+                        <div className="text-sm leading-tight font-semibold text-foreground truncate">Account &amp; Lists</div>
+                      </div>
+                      <div className="shrink-0 text-muted-foreground">
+                        <CaretDown size={14} weight="bold" />
+                      </div>
+                    </div>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     {user ? (
@@ -300,10 +312,12 @@ export function Header({
               <ThemeToggle />
               {isAuthenticated ? (
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Account">
-                      <User size={18} weight="bold" />
-                    </Button>
+                  <DropdownMenuTrigger
+                    type="button"
+                    aria-label="Account"
+                    className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'h-9 w-9')}
+                  >
+                    <User size={18} weight="bold" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-52">
                     {user ? (

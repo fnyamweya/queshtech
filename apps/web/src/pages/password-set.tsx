@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLocation, useRoute } from 'wouter'
 import { AuthShell } from '@/components/auth/auth-shell'
-import { AuthNotice, AuthSpinner } from '@/components/auth/auth-helpers'
+import { AuthNotice } from '@/components/auth/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -161,7 +161,6 @@ export function PasswordSetPage() {
 
         <div className="grid gap-3">
           <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
-            {isLoading ? <AuthSpinner /> : null}
             Update password
             <ArrowRight size={16} weight="bold" />
           </Button>

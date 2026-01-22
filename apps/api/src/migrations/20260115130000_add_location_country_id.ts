@@ -9,7 +9,7 @@ export class AddLocationCountryId20260115130000
     await queryRunner.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
 
     await queryRunner.query(
-      'ALTER TABLE "location" ADD COLUMN "country_id" uuid',
+      'ALTER TABLE "location" ADD COLUMN IF NOT EXISTS "country_id" uuid',
     );
 
     // Ensure country_config has active entries for any existing location.country_code
@@ -42,11 +42,11 @@ export class AddLocationCountryId20260115130000
     );
 
     await queryRunner.query(
-      'ALTER TABLE "location" ADD CONSTRAINT "FK_location_country" FOREIGN KEY ("country_id") REFERENCES "country_config"("id") ON DELETE RESTRICT',
+      'DO $$ BEGIN ALTER TABLE "location" ADD CONSTRAINT "FK_location_country" FOREIGN KEY ("country_id") REFERENCES "country_config"("id") ON DELETE RESTRICT; EXCEPTION WHEN duplicate_object THEN NULL; END $$;',
     );
 
     await queryRunner.query(
-      'CREATE INDEX "idx_location_country_id" ON "location" ("country_id")',
+      'CREATE INDEX IF NOT EXISTS "idx_location_country_id" ON "location" ("country_id")',
     );
   }
 

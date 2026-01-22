@@ -3,6 +3,33 @@ import { createApiClient } from '@/lib/api-client'
 import { endpoints } from '@/lib/endpoints'
 import type { Banner, BannerPlacement } from '@/types/catalog'
 
+type CacheEnvelope<T> = { ts: number; data: T }
+const PUBLIC_BANNERS_CACHE_TTL_MS = 5 * 60_000
+
+function readCache<T>(key: string, ttlMs: number): T | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CacheEnvelope<T>
+    if (!parsed || typeof parsed !== 'object') return null
+    if (Date.now() - Number(parsed.ts || 0) > ttlMs) return null
+    return parsed.data ?? null
+  } catch {
+    return null
+  }
+}
+
+function writeCache<T>(key: string, data: T) {
+  if (typeof window === 'undefined') return
+  try {
+    const payload: CacheEnvelope<T> = { ts: Date.now(), data }
+    window.localStorage.setItem(key, JSON.stringify(payload))
+  } catch {
+    // ignore
+  }
+}
+
 function extractList(payload: unknown): any[] {
   if (Array.isArray(payload)) return payload
   const p: any = payload as any
@@ -106,28 +133,52 @@ function toBanner(raw: any): Banner | null {
 export function usePublicBanners(options?: { placement?: BannerPlacement }) {
   const api = useMemo(() => createApiClient(), [])
 
-  const [banners, setBanners] = useState<Banner[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const cacheKey = useMemo(() => `public:banners:${options?.placement || 'all'}`, [options?.placement])
+  const cachedBanners = useMemo(() => readCache<Banner[]>(cacheKey, PUBLIC_BANNERS_CACHE_TTL_MS), [cacheKey])
+
+  const [banners, setBanners] = useState<Banner[]>(cachedBanners || [])
+  const [isLoading, setIsLoading] = useState(!cachedBanners)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    setIsLoading(true)
+    const hasCache = banners.length > 0
     setError(null)
+    if (hasCache) {
+      setIsRefreshing(true)
+    } else {
+      setIsLoading(true)
+    }
+
     try {
       const payload = await api.get(endpoints.banners.publicList({ placement: options?.placement, isActive: true }))
       const mapped = extractList(payload).map(toBanner).filter(Boolean) as Banner[]
 
       setBanners(mapped)
+      writeCache(cacheKey, mapped)
     } catch (e: any) {
-      setBanners([])
+      if (!hasCache) {
+        setBanners([])
+      }
       setError(e?.message || 'Failed to load banners')
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
-  }, [api, options?.placement])
+  }, [api, banners.length, cacheKey, options?.placement])
 
   useEffect(() => {
-    refresh()
+    if (cachedBanners && cachedBanners.length) {
+      setBanners(cachedBanners)
+      setIsLoading(false)
+    }
+
+    const schedule =
+      typeof window !== 'undefined' && 'requestIdleCallback' in window
+        ? (cb: () => void) => (window as any).requestIdleCallback(cb)
+        : (cb: () => void) => window.setTimeout(cb, 0)
+
+    schedule(refresh)
   }, [refresh])
 
   const heroBanners = useMemo(() => {
@@ -160,7 +211,7 @@ export function usePublicBanners(options?: { placement?: BannerPlacement }) {
     })
   }, [banners, heroBanners])
 
-  return { banners, heroBanners, featureBanners, isLoading, error, refresh }
+  return { banners, heroBanners, featureBanners, isLoading, isRefreshing, error, refresh }
 }
 
 export type AdminBannerInput = {

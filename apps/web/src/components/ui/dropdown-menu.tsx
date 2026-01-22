@@ -1,6 +1,6 @@
 "use client"
 
-import { ComponentProps } from "react"
+import { ComponentProps, ComponentPropsWithoutRef, ElementRef, forwardRef } from "react"
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu"
 import CheckIcon from "lucide-react/dist/esm/icons/check"
 import ChevronRightIcon from "lucide-react/dist/esm/icons/chevron-right"
@@ -22,16 +22,20 @@ function DropdownMenuPortal({
   )
 }
 
-function DropdownMenuTrigger({
-  ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+const DropdownMenuTrigger = forwardRef<
+  ElementRef<typeof DropdownMenuPrimitive.Trigger>,
+  ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Trigger>
+>((props, ref) => {
   return (
     <DropdownMenuPrimitive.Trigger
       data-slot="dropdown-menu-trigger"
+      ref={ref}
       {...props}
     />
   )
-}
+})
+
+DropdownMenuTrigger.displayName = "DropdownMenuTrigger"
 
 function DropdownMenuContent({
   className,

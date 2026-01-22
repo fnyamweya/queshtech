@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
 import { toast } from 'sonner'
-import { ChevronDown, ChevronRight, CornerDownRight, Loader2, Plus, Save, Shield, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, CornerDownRight, Plus, Save, Shield, Trash2, X } from 'lucide-react'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -494,12 +494,7 @@ export function AdminSettingsRolesPage() {
             <div className="rounded-lg border bg-card">
               <ScrollArea className="h-[520px]">
                 <div className="p-2">
-                  {isLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading…
-                    </div>
-                  ) : filteredRoles.length === 0 ? (
+                  {isLoading ? null : filteredRoles.length === 0 ? (
                     <div className="py-10 text-center text-sm text-muted-foreground">No roles found.</div>
                   ) : (
                     <div className="space-y-2">
@@ -545,7 +540,7 @@ export function AdminSettingsRolesPage() {
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="outline" size="sm" disabled={isDeleting}>
-                          {isDeleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                          <Trash2 className="h-4 w-4 mr-2" />
                           Delete
                         </Button>
                       </AlertDialogTrigger>
@@ -565,7 +560,7 @@ export function AdminSettingsRolesPage() {
                   ) : null}
 
                   <Button size="sm" onClick={handleSave} disabled={!canSave || isSaving}>
-                    {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    <Save className="h-4 w-4 mr-2" />
                     Save
                   </Button>
                 </div>
@@ -757,7 +752,6 @@ export function AdminSettingsRolesPage() {
 
                 <div className="flex items-center justify-end">
                   <Button onClick={handleSave} disabled={!canSave || isSaving}>
-                    {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
                     Save role
                   </Button>
                 </div>

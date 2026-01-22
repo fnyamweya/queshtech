@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Put,
   HttpCode,
@@ -90,6 +91,21 @@ export class AdminShippingController {
     return ResponseUtil.success(z, 'Shipping zone updated');
   }
 
+  @Patch('zones/:id')
+  @RequirePermissions({
+    module: PermissionModule.SHIPPING,
+    permission: 'update',
+  })
+  @ApiOperation({ summary: 'Patch shipping zone' })
+  @ApiOkResponse({ description: 'Shipping zone updated' })
+  async patchZone(
+    @Param('id') id: string,
+    @Body() payload: Partial<CreateShippingZoneDto>,
+  ) {
+    const z = await this.adminService.updateZone(id, payload);
+    return ResponseUtil.success(z, 'Shipping zone updated');
+  }
+
   @Delete('zones/:id')
   @RequirePermissions({
     module: PermissionModule.SHIPPING,
@@ -135,6 +151,21 @@ export class AdminShippingController {
       type: payload.type,
     });
     return ResponseUtil.created(row, 'Shipping zone location created');
+  }
+
+  @Delete('zones/:id/locations')
+  @RequirePermissions({
+    module: PermissionModule.SHIPPING,
+    permission: 'delete',
+  })
+  @ApiOperation({ summary: 'Detach a location from a shipping zone' })
+  @ApiOkResponse({ description: 'Shipping zone location deleted' })
+  async deleteZoneLocationForZone(
+    @Param('id') id: string,
+    @Body() payload: { locationId: string },
+  ) {
+    const ok = await this.adminService.deleteZoneLocationForZone(id, payload?.locationId);
+    return ResponseUtil.success({ deleted: ok }, 'Shipping zone location deleted');
   }
 
   @Get('zones/:id/methods')
@@ -314,6 +345,21 @@ export class AdminShippingController {
     const r = await this.adminService.updateMethod(id, payload);
     return ResponseUtil.success(r, 'Shipping method updated');
   }
+  
+  @Patch('methods/:id')
+  @RequirePermissions({
+    module: PermissionModule.SHIPPING,
+    permission: 'update',
+  })
+  @ApiOperation({ summary: 'Patch shipping method' })
+  @ApiOkResponse({ description: 'Shipping method updated' })
+  async patchMethod(
+    @Param('id') id: string,
+    @Body() payload: Partial<CreateShippingMethodDto>,
+  ) {
+    const r = await this.adminService.updateMethod(id, payload);
+    return ResponseUtil.success(r, 'Shipping method updated');
+  }
 
   @Delete('methods/:id')
   @RequirePermissions({
@@ -327,6 +373,22 @@ export class AdminShippingController {
     return ResponseUtil.success({ deleted: ok }, 'Shipping method deleted');
   }
 
+  @Patch('providers/:id')
+  @RequirePermissions({
+    module: PermissionModule.SHIPPING,
+    permission: 'update',
+  })
+  @ApiOperation({ summary: 'Patch shipping provider' })
+  @ApiBody({ type: UpdateShippingProviderDto })
+  @ApiOkResponse({ description: 'Shipping provider updated' })
+  async patchProvider(
+    @Param('id') id: string,
+    @Body() payload: UpdateShippingProviderDto,
+  ) {
+    const row = await this.adminService.updateProvider(id, payload as any);
+    return ResponseUtil.success(row, 'Shipping provider updated');
+  }
+
   @Get('methods/:id/rates')
   @RequirePermissions({ module: PermissionModule.SHIPPING, permission: 'read' })
   @ApiOperation({ summary: 'List shipping rates for a method (nested route)' })
@@ -334,6 +396,30 @@ export class AdminShippingController {
   async listRatesForMethod(@Param('id') id: string) {
     const rows = await this.adminService.listRates(id);
     return ResponseUtil.success(rows, 'Shipping rates retrieved');
+  }
+  
+  @Patch('rates/:rateId')
+  @RequirePermissions({
+    module: PermissionModule.SHIPPING,
+    permission: 'update',
+  })
+  @ApiOperation({ summary: 'Patch a shipping rate' })
+  @ApiOkResponse({ description: 'Shipping rate updated' })
+  async patchRate(@Param('rateId') rateId: string, @Body() payload: Partial<CreateShippingRateDto>) {
+    const r = await this.adminService.updateRate(rateId, payload);
+    return ResponseUtil.success(r, 'Shipping rate updated');
+  }
+  
+  @Delete('rates/:rateId')
+  @RequirePermissions({
+    module: PermissionModule.SHIPPING,
+    permission: 'delete',
+  })
+  @ApiOperation({ summary: 'Delete a shipping rate' })
+  @ApiOkResponse({ description: 'Shipping rate deleted' })
+  async deleteRate(@Param('rateId') rateId: string) {
+    const ok = await this.adminService.deleteRate(rateId);
+    return ResponseUtil.success({ deleted: ok }, 'Shipping rate deleted');
   }
 
   @Post('methods/:id/rates')

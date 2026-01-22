@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'wouter'
-import { CornerDownRight, KeyRound, Loader2, RefreshCcw, Save } from 'lucide-react'
+import { CornerDownRight, KeyRound, RefreshCcw, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Button } from '@/components/ui/button'
@@ -157,7 +157,7 @@ export function AdminSettingsR2Page() {
       actions={
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={isLoading}>
-            {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCcw className="h-4 w-4 mr-2" />}
+            <RefreshCcw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
           <Link href="/axis/settings">
@@ -241,7 +241,7 @@ export function AdminSettingsR2Page() {
 
               <div className="flex items-center justify-end">
                 <Button onClick={onSave} disabled={isSaving}>
-                  {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  <Save className="h-4 w-4 mr-2" />
                   Save configuration
                 </Button>
               </div>
@@ -282,7 +282,7 @@ export function AdminSettingsR2Page() {
 
               <div className="flex items-center justify-end">
                 <Button variant="outline" onClick={onSaveSecrets} disabled={isSavingSecrets}>
-                  {isSavingSecrets ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <KeyRound className="h-4 w-4 mr-2" />}
+                  <KeyRound className="h-4 w-4 mr-2" />
                   Update credentials
                 </Button>
               </div>

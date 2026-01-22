@@ -2,38 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { phosphorIcons, resolvePhosphorIcon, toPhosphorComponentName, toPhosphorKey } from '@/lib/phosphor'
-
-const PHOSPHOR_META_URL = 'https://unpkg.com/@phosphor-icons/react@2.1.7/?meta'
+import { ValueIcon } from '@/components/common/value-icon'
+import lineiconsCss from 'lineicons/dist/lineicons.css?raw'
 
 let cachedIconNames: string[] | null = null
-let pendingIconRequest: Promise<string[]> | null = null
 
-const fetchIconNames = async () => {
+function extractLineiconNames(cssText: string): string[] {
+  const matches = cssText.matchAll(/\.lni-([a-z0-9-]+)::before\s*\{/g)
+  const raw = Array.from(matches, (m) => m[1]).filter(Boolean)
+  const unique = Array.from(new Set(raw))
+    .map((n) => `lni-${n}`)
+    .filter((n) => !['lni-sm', 'lni-lg', 'lni-16', 'lni-32', 'lni-is-spinning'].includes(n))
+    .sort((a, b) => a.localeCompare(b))
+  return unique
+}
+
+function getIconNames(): string[] {
   if (cachedIconNames) return cachedIconNames
-  if (pendingIconRequest) return pendingIconRequest
-
-  pendingIconRequest = fetch(PHOSPHOR_META_URL)
-    .then(async (res) => {
-      if (!res.ok) throw new Error('Failed to load Phosphor icon list')
-      const data = await res.json()
-      const files: { path?: string }[] = Array.isArray(data?.files) ? data.files : []
-      const names = files
-        .map((file) => file.path || '')
-        .filter((path) => path.startsWith('/dist/csr/') && path.endsWith('.mjs'))
-        .map((path) => path.split('/').pop() || '')
-        .map((name) => name.replace(/\.mjs$/, ''))
-        .filter((name) => name && name !== 'index')
-
-      const unique = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b))
-      cachedIconNames = unique
-      return unique
-    })
-    .finally(() => {
-      pendingIconRequest = null
-    })
-
-  return pendingIconRequest
+  cachedIconNames = extractLineiconNames(lineiconsCss)
+  return cachedIconNames
 }
 
 interface IconPickerProps {
@@ -44,28 +31,14 @@ interface IconPickerProps {
 }
 
 export function IconPicker({ value, onChange, placeholder, className }: IconPickerProps) {
-  const [icons, setIcons] = useState<string[]>([])
+  const [icons, setIcons] = useState<string[]>(() => getIconNames())
   const [query, setQuery] = useState('')
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    let active = true
-    fetchIconNames()
-      .then((names) => {
-        if (!active) return
-        setIcons(names)
-      })
-      .catch((err) => {
-        if (!active) return
-        setError(err?.message || 'Unable to load icons')
-      })
-    return () => {
-      active = false
-    }
+    setIcons(getIconNames())
   }, [])
 
-  const selectedComponentName = useMemo(() => toPhosphorComponentName(value), [value])
-  const SelectedIcon = useMemo(() => resolvePhosphorIcon(value), [value])
+  const selectedLabel = useMemo(() => (value || '').trim(), [value])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -79,30 +52,23 @@ export function IconPicker({ value, onChange, placeholder, className }: IconPick
     <div className={cn('space-y-2', className)}>
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-md border bg-muted flex items-center justify-center">
-          {SelectedIcon ? (
-            <SelectedIcon size={20} weight="bold" />
-          ) : (
-            <span className="text-[10px] text-muted-foreground">No icon</span>
-          )}
+          <ValueIcon value={value} size={20} />
         </div>
         <div className="flex-1">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={placeholder || 'Search icons (e.g. device, cart)'}
+            placeholder={placeholder || 'Search icons (e.g. cart, tag, phone)'}
           />
-          {selectedComponentName ? (
-            <p className="text-xs text-muted-foreground mt-1">Selected: {selectedComponentName}</p>
+          {selectedLabel ? (
+            <p className="text-xs text-muted-foreground mt-1">Selected: {selectedLabel}</p>
           ) : null}
         </div>
       </div>
 
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-
       <div className="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-10 gap-2 rounded-md border p-2 max-h-48 overflow-auto">
         {visible.map((name) => {
-          const Icon = phosphorIcons[name]
-          const isSelected = selectedComponentName === name
+          const isSelected = (value || '').trim() === name
           return (
             <Button
               key={name}
@@ -110,10 +76,10 @@ export function IconPicker({ value, onChange, placeholder, className }: IconPick
               variant={isSelected ? 'secondary' : 'ghost'}
               size="icon"
               className={cn('h-9 w-9', isSelected && 'ring-1 ring-primary')}
-              onClick={() => onChange(toPhosphorKey(name))}
+              onClick={() => onChange(name)}
               aria-label={name}
             >
-              {Icon ? <Icon size={18} weight="bold" /> : null}
+              <ValueIcon value={name} size={18} />
             </Button>
           )
         })}
@@ -122,7 +88,7 @@ export function IconPicker({ value, onChange, placeholder, className }: IconPick
       <Input
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="ph:device-mobile"
+        placeholder="lni-cart (or ph:device-mobile)"
       />
     </div>
   )

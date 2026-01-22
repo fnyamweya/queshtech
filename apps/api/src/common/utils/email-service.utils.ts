@@ -12,6 +12,7 @@ import { renderUserInviteTemplate } from 'src/common/email/templates/user-invite
 import { renderSuperAdminCredentialsTemplate } from 'src/common/email/templates/super-admin-credentials.template';
 import { renderTwoFactorEmailTemplate } from 'src/common/email/templates/two-factor.template';
 import { renderResetPasswordEmailTemplate } from 'src/common/email/templates/reset-password-code.template';
+import { renderOrderInvoiceEmailTemplate } from 'src/common/email/templates/order-invoice.template';
 
 @Injectable()
 export class EmailServiceUtils {
@@ -262,6 +263,49 @@ export class EmailServiceUtils {
         error,
       );
       throw new Error('Failed to send password reset email');
+    }
+  }
+
+  async sendOrderInvoiceEmail({
+    email,
+    customerName,
+    orderNumber,
+    amount,
+    currency,
+    invoiceUrl,
+    paymentUrl,
+    pdfUrl,
+    appName,
+  }: {
+    email: string;
+    customerName: string;
+    orderNumber: string;
+    amount: string;
+    currency: string;
+    invoiceUrl: string;
+    paymentUrl: string;
+    pdfUrl: string;
+    appName: string;
+  }): Promise<void> {
+    try {
+      await this.sendEmail({
+        to: email,
+        subject: `Invoice ready for order ${orderNumber}`,
+        html: renderOrderInvoiceEmailTemplate({
+          appName,
+          customerName,
+          orderNumber,
+          amount,
+          currency,
+          invoiceUrl,
+          paymentUrl,
+          pdfUrl,
+        }),
+      });
+      this.logger.log(`Order invoice sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send order invoice to ${email}:`, error);
+      throw new Error('Failed to send invoice email');
     }
   }
 }

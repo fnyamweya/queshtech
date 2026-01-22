@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLocation } from 'wouter'
 import { AuthShell } from '@/components/auth/auth-shell'
-import { AuthSpinner } from '@/components/auth/auth-helpers'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -173,17 +172,8 @@ export function LoginPage() {
         </div>
 
         <Button type="submit" className="h-11 w-full gap-2" disabled={isLoading}>
-          {isLoading ? (
-            <>
-              <AuthSpinner />
-              Signing in…
-            </>
-          ) : (
-            <>
-              Sign in
-              <ArrowRight size={16} weight="bold" />
-            </>
-          )}
+          Sign in
+          <ArrowRight size={16} weight="bold" />
         </Button>
 
         <div className="relative py-1">
@@ -200,7 +190,6 @@ export function LoginPage() {
           onClick={handleGoogleLogin}
           disabled={isLoading}
         >
-          {isLoading ? <AuthSpinner /> : null}
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="#4285F4"

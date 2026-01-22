@@ -69,9 +69,13 @@ export class ActivityLogInterceptor implements NestInterceptor {
 
       const { device, browser, os } = parseUserAgent(request);
 
-      const resourceId = logOptions.getResourceId
+      const rawResourceId = logOptions.getResourceId
         ? logOptions.getResourceId(result, request)
         : request?.params?.id;
+
+      const resourceId = Array.isArray(rawResourceId)
+        ? rawResourceId[0]
+        : rawResourceId;
 
       await this.activityLogService.create({
         userId: requestWithUser?.user.id,

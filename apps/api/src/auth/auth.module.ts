@@ -39,6 +39,7 @@ import { OAuthExchangeService } from './services/oauth-exchange.service';
 import { GoogleOAuthGuard } from './guards/google-oauth.guard';
 import { AppleOAuthGuard } from './guards/apple-oauth.guard';
 import { SettingModule } from 'src/setting/setting.module';
+import type { StringValue } from 'ms';
 
 @Module({
   imports: [
@@ -65,7 +66,7 @@ import { SettingModule } from 'src/setting/setting.module';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION', '15m'),
+          expiresIn: (configService.get<string>('JWT_EXPIRATION', '15m') || '15m') as StringValue,
         },
       }),
       inject: [ConfigService],

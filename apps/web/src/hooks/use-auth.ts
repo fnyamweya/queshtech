@@ -62,6 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState(false)
 
   const refreshInFlightRef = useRef<Promise<RefreshResult> | null>(null)
+  const failedRefreshTokenRef = useRef<string | null>(null)
+  const failedRefreshAtRef = useRef<number>(0)
+  const refreshBackoffMs = 5 * 60_000
 
   const clearAuth = useCallback(() => {
     setUser(null)
@@ -75,6 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!refreshToken) {
       clearAuth()
       return { success: false, error: 'Missing refresh token' }
+    }
+
+    if (failedRefreshTokenRef.current === refreshToken) {
+      const elapsed = Date.now() - failedRefreshAtRef.current
+      if (elapsed < refreshBackoffMs) {
+        clearAuth()
+        return { success: false, error: 'Refresh token previously rejected' }
+      }
     }
 
     if (refreshInFlightRef.current) {
@@ -101,6 +112,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Most backends only rotate access tokens; keep existing refresh token unless one is returned.
         if (nextRefreshToken) setRefreshToken(nextRefreshToken)
 
+        failedRefreshTokenRef.current = null
+        failedRefreshAtRef.current = 0
+
         const expFromResponse = (body as any)?.accessTokenExpiresAt
         const expMs = typeof expFromResponse === 'string' ? Date.parse(expFromResponse) : getJwtExpiryMs(nextAccessToken)
         if (expMs && Number.isFinite(expMs)) setAccessTokenExpiresAt(new Date(expMs).toISOString())
@@ -108,6 +122,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: true, accessToken: nextAccessToken, refreshToken: nextRefreshToken || undefined }
       } catch (error) {
         // Refresh failed (expired/invalid token). Treat as signed-out.
+        failedRefreshTokenRef.current = refreshToken
+        failedRefreshAtRef.current = Date.now()
         clearAuth()
         const message = error instanceof ApiError ? error.message : 'Session refresh failed'
         return { success: false, error: message }
@@ -422,26 +438,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If we already have a user, we're good enough for UI.
         if (user) return
 
-        // Try fetching profile even without an access token.
-        // The backend may establish a cookie-based session (e.g. after redirect-based OAuth).
-        if (accessToken) {
-          await getProfile()
-          return
-        }
+        // Only probe profile when tokens exist.
+        if (!accessToken && !refreshToken) return
 
-        try {
-          await getProfile()
-        } catch {
-          // ignore: not authenticated
-        }
+        await getProfile()
       } catch {
-        // ignore restoration failures
+        // ignore: not authenticated
       } finally {
         if (!cancelled) setIsReady(true)
       }
     })()
     return () => { cancelled = true }
-  }, [accessToken, getProfile, user])
+  }, [accessToken, getProfile, refreshToken, user])
 
   useEffect(() => {
     // If we start with a stored user, consider auth ready immediately.

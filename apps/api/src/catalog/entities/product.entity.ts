@@ -11,6 +11,7 @@ import { ProductSku } from './product-sku.entity';
 import { JoinColumn, ManyToOne, OneToMany } from 'typeorm';
 import { Brand } from './brand.entity';
 import { ProductCategory } from './product-category.entity';
+import { ProductImage } from './product-image.entity';
 import { ProductChannel } from './product-channel.entity';
 
 @Entity('product')
@@ -25,6 +26,9 @@ export class Product {
 
   @Column({ type: 'text', nullable: true })
   description?: string;
+
+  @Column({ name: 'short_description', type: 'text', nullable: true })
+  shortDescription?: string;
 
   @Column({ name: 'seo_title', type: 'text', nullable: true })
   seoTitle?: string;
@@ -74,6 +78,9 @@ export class Product {
 
   @OneToMany(() => ProductSku, (sku) => sku.product)
   skus: ProductSku[];
+
+  @OneToMany(() => ProductImage, (image) => image.product)
+  productImages: ProductImage[];
 
   @OneToMany(() => ProductChannel, (pc) => pc.product)
   productChannels: ProductChannel[];

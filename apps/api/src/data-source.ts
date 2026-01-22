@@ -18,6 +18,9 @@ const isSyncEnabled = syncEnv === 'true';
 const migrationsRunEnv = (process.env.DB_MIGRATIONS_RUN ?? '').trim();
 const shouldRunMigrations = !isJest && !isSyncEnabled && migrationsRunEnv !== 'false';
 
+const loggingEnv = (process.env.DB_LOGGING ?? '').trim();
+const isLoggingEnabled = !isJest && loggingEnv === 'true';
+
 const dbHost = (process.env.DB_HOST ?? '').trim();
 const isLocalDbHost = dbHost === 'localhost' || dbHost === '127.0.0.1' || dbHost === 'db';
 const sslEnv = (process.env.DB_SSL ?? '').trim();
@@ -39,7 +42,7 @@ export default new DataSource({
   synchronize: isJest || isSyncEnabled,
   dropSchema: isJest,
   migrationsRun: shouldRunMigrations,
-  logging: isJest ? false : true,
+  logging: isLoggingEnabled,
   ssl: shouldUseSsl
     ? {
         rejectUnauthorized: false,

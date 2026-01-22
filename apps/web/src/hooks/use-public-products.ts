@@ -89,15 +89,21 @@ export function usePublicProducts(options?: { page?: number; limit?: number; q?:
   }
 }
 
-export function usePublicProduct(options: { idOrSlug?: string | null; view?: boolean }) {
+export function usePublicProduct(options: {
+  idOrSlug?: string | null
+  view?: boolean
+  viewParams?: Parameters<typeof endpoints.catalog.publicProductViewById>[1]
+}) {
   const api = useMemo(() => createApiClient(), [])
   const [product, setProduct] = useState<Product | null>(null)
+  const [raw, setRaw] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!options.idOrSlug) {
       setProduct(null)
+      setRaw(null)
       setIsLoading(false)
       return
     }
@@ -105,23 +111,25 @@ export function usePublicProduct(options: { idOrSlug?: string | null; view?: boo
     setError(null)
     try {
       const url = options.view
-        ? endpoints.catalog.publicProductViewById(options.idOrSlug)
+        ? endpoints.catalog.publicProductViewById(options.idOrSlug, options.viewParams)
         : endpoints.catalog.publicProductById(options.idOrSlug)
       const payload = await api.get(url)
+      setRaw(payload)
       setProduct(mapToProduct(payload))
     } catch (e: any) {
       setProduct(null)
+      setRaw(null)
       setError(e?.message || 'Failed to load product')
     } finally {
       setIsLoading(false)
     }
-  }, [api, options.idOrSlug, options.view])
+  }, [api, options.idOrSlug, options.view, options.viewParams])
 
   useEffect(() => {
     refresh()
   }, [refresh])
 
-  return { product, isLoading, error, refresh }
+  return { product, raw, isLoading, error, refresh }
 }
 
 export function usePublicCategoryProducts(options: {

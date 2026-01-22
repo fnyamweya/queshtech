@@ -1,6 +1,6 @@
 "use client"
 
-import { ComponentProps } from "react"
+import { ComponentProps, ComponentPropsWithoutRef, ElementRef, forwardRef } from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
@@ -11,11 +11,14 @@ function Popover({
   return <PopoverPrimitive.Root data-slot="popover" {...props} />
 }
 
-function PopoverTrigger({
-  ...props
-}: ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
-}
+const PopoverTrigger = forwardRef<
+  ElementRef<typeof PopoverPrimitive.Trigger>,
+  ComponentPropsWithoutRef<typeof PopoverPrimitive.Trigger>
+>((props, ref) => {
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" ref={ref} {...props} />
+})
+
+PopoverTrigger.displayName = "PopoverTrigger"
 
 function PopoverContent({
   className,

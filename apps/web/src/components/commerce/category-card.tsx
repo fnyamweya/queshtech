@@ -7,21 +7,27 @@ import { ArrowRight } from '@phosphor-icons/react'
 interface CategoryCardProps {
   category: Category
   className?: string
+  size?: 'default' | 'compact'
 }
 
-export function CategoryCard({ category, className }: CategoryCardProps) {
+export function CategoryCard({ category, className, size = 'default' }: CategoryCardProps) {
+  const image = category.imageUrl || category.image
+  const hasImage = Boolean(image)
+
   return (
-    <Link href={`/category/${category.slug}`}>
+    <Link href={`/category/${category.slug}`} className="block">
       <Card
         className={cn(
-          'group relative overflow-hidden aspect-[4/3] hover:shadow-lg transition-all duration-300',
+          'group relative overflow-hidden transition-all duration-300',
+          size === 'compact' ? 'aspect-[4/3] rounded-xl hover:shadow-md' : 'aspect-[4/3] hover:shadow-lg',
+          !hasImage ? 'bg-gradient-to-br from-muted/40 via-background to-background' : '',
           className
         )}
       >
-        {(category.imageUrl || category.image) && (
+        {hasImage && (
           <div className="absolute inset-0">
             <img
-              src={category.imageUrl || category.image}
+              src={image as string}
               alt={category.name}
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
@@ -29,17 +35,35 @@ export function CategoryCard({ category, className }: CategoryCardProps) {
           </div>
         )}
 
-        <div className="relative h-full p-6 flex flex-col justify-end">
-          <h3 className="text-xl font-semibold text-white mb-1">
+        <div
+          className={cn(
+            'relative h-full flex flex-col justify-end',
+            size === 'compact' ? 'p-4' : 'p-6',
+            hasImage ? 'text-white' : 'text-foreground'
+          )}
+        >
+          <h3
+            className={cn(
+              'font-semibold leading-snug',
+              size === 'compact' ? 'text-sm sm:text-base line-clamp-1' : 'text-xl line-clamp-2'
+            )}
+          >
             {category.name}
           </h3>
-          {category.description && (
-            <p className="text-sm text-white/90 mb-3 line-clamp-2">
+
+          {size !== 'compact' && category.description ? (
+            <p className={cn('mt-2 text-sm line-clamp-2', hasImage ? 'text-white/90' : 'text-muted-foreground')}>
               {category.description}
             </p>
-          )}
-          <div className="flex items-center text-white font-medium text-sm group-hover:gap-2 transition-all">
-            Shop Now
+          ) : null}
+
+          <div
+            className={cn(
+              'mt-3 flex items-center font-medium text-xs sm:text-sm group-hover:gap-2 transition-all',
+              hasImage ? 'text-white' : 'text-foreground'
+            )}
+          >
+            {size === 'compact' ? 'Shop' : 'Shop now'}
             <ArrowRight
               size={16}
               weight="bold"

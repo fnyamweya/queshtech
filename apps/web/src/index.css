@@ -199,11 +199,11 @@
   --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
   
-  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-sm: var(--radius);
   --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) * 1.2);
-  --radius-xl: calc(var(--radius) * 1.5);
-  --radius-2xl: calc(var(--radius) * 2);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
   --radius-full: 9999px;
 }
 
@@ -216,6 +216,21 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
     font-family: var(--font-display);
+  }
+
+  input,
+  textarea,
+  select {
+    color-scheme: light dark;
+  }
+
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    box-shadow: 0 0 0px 1000px var(--background) inset;
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+    transition: background-color 9999s ease-out 0s;
   }
 }
 

@@ -169,7 +169,7 @@ export function AdminPriceListsPage() {
                 <CardTitle>Lists</CardTitle>
                 <Badge variant="secondary">{priceLists.length}</Badge>
               </div>
-              <CardDescription>{isLoading ? 'Loading…' : error ? error : 'Search and select a price list.'}</CardDescription>
+              <CardDescription>{error ? error : 'Search and select a price list.'}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Command className="rounded-md border">
@@ -177,7 +177,7 @@ export function AdminPriceListsPage() {
                 <CommandList>
                   <ScrollArea className="h-[360px]">
                     {visible.length === 0 ? (
-                      <CommandEmpty>{isLoading ? 'Loading…' : 'No price lists found.'}</CommandEmpty>
+                      <CommandEmpty>No price lists found.</CommandEmpty>
                     ) : null}
                     {visible.map((pl) => {
                       const isSelected = pl.id === selectedId

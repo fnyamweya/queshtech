@@ -33,6 +33,20 @@ npm run dev:api
 npm run dev:web
 ```
 
+## Local DB workflow (recommended)
+
+This repo uses TypeORM migrations for schema changes.
+
+```bash
+# Apply schema changes
+npm -w apps/api run db:migrate
+
+# Seed realistic local data (catalog, settings, etc.)
+npm -w apps/api run db:seed
+```
+
+Note: `apps/api/.env.local` is set up to keep `DB_SYNC=false` by default to avoid schema drift.
+
 ## Docker
 
 The provided `docker-compose.yml` starts Postgres + Redis + pgAdmin + RedisInsight (and can also run the API container).

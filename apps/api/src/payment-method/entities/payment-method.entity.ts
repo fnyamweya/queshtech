@@ -41,6 +41,10 @@ export class PaymentMethod {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
+  @Index()
+  @Column({ type: 'text', default: 'active' })
+  status: PaymentMethodStatus;
+
   @OneToMany(() => PaymentMethodChannel, (link) => link.paymentMethod)
   channelLinks?: PaymentMethodChannel[];
 
@@ -61,4 +65,10 @@ export class PaymentMethod {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+}
+
+export enum PaymentMethodStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  DEPRECATED = 'deprecated',
 }

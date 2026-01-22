@@ -339,6 +339,7 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
 
   const [countryOptions, setCountryOptions] = useState<LocationOption[]>([])
   const [isLoadingCountries, setIsLoadingCountries] = useState(false)
+
   const [selectedCountryId, setSelectedCountryId] = useState('')
   const [addressFieldConfig, setAddressFieldConfig] = useState<AddressFieldConfig | null>(null)
   const locationLevelLabels = useMemo(() => extractLocationLevelLabels(addressFieldConfig), [addressFieldConfig])
@@ -365,6 +366,14 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
     return cart.subtotal + cart.tax + selectedShippingCost - cart.discount
   }, [cart.discount, cart.subtotal, cart.tax, selectedShippingCost])
 
+  const displayCurrency = useMemo(() => {
+    return (
+      selectedQuote?.currency ||
+      cart.items[0]?.product?.currency ||
+      ''
+    )
+  }, [cart.items, selectedQuote?.currency])
+
   useEffect(() => {
     if (currentStep !== 'delivery') return
     const locationId = shippingAddress.locationId.trim()
@@ -385,7 +394,7 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
           signal: controller.signal,
           body: {
             locationId,
-            currency: 'KES',
+            currency: displayCurrency || undefined,
             totals: {
               subtotal: cart.subtotal,
               tax: cart.tax,
@@ -725,7 +734,7 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
           shippingMethodCode: methodCode || undefined,
           paymentMethod,
           payment: paymentMethod === 'mpesa' ? { phone: mpesaPhone || undefined } : undefined,
-          currency: 'KES',
+          currency: displayCurrency || undefined,
           totals: {
             subtotal: cart.subtotal,
             tax: cart.tax,
@@ -754,9 +763,7 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Country</Label>
-                          {isLoadingCountries ? (
-                            <div className="text-sm text-muted-foreground">Loading countries…</div>
-                          ) : countryOptions.length > 0 ? (
+                          {isLoadingCountries ? null : countryOptions.length > 0 ? (
                             <Select
                               value={selectedCountryId || selectedCountrySelectValue}
                               onValueChange={(value) => {
@@ -803,12 +810,12 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
                         </div>
                       </div>
 
-                      {isLoadingLocations && locationLevels.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">Loading locations for {shippingAddress.countryCode || 'KE'}…</div>
-                      ) : locationLevels.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">
-                          No locations found for {shippingAddress.countryCode || 'KE'}.
-                        </div>
+                      {isLoadingLocations && locationLevels.length === 0 ? null : locationLevels.length === 0 ? (
+                        isLoadingLocations ? null : (
+                          <div className="text-sm text-muted-foreground">
+                            No locations found for {shippingAddress.countryCode || 'KE'}.
+                          </div>
+                        )
                       ) : (
                         <div className="grid gap-4 sm:grid-cols-2">
                           {locationLevels.map((options, levelIndex) => {
@@ -1241,7 +1248,6 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
                     </div>
 
                     <div className="space-y-3">
-                      {isLoadingQuotes && <div className="text-sm text-muted-foreground">Fetching shipping options…</div>}
 
                       {!isLoadingQuotes && shippingAddress.locationId.trim() && shippingQuotes.length === 0 && (
                         <div className="text-sm text-muted-foreground">No shipping options available for this location.</div>
@@ -1269,7 +1275,9 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
                                       <p className="text-sm text-muted-foreground truncate">{hint || '—'}</p>
                                     </div>
                                   </div>
-                                  <span className="font-medium">{amount === null ? '—' : `${q.currency || 'KES'} ${amount}`}</span>
+                                  <div className="font-medium">
+                                    {amount === null ? '—' : <Price price={amount} currency={q.currency || displayCurrency} size="sm" />}
+                                  </div>
                                 </Label>
                               )
                             })}
@@ -1512,11 +1520,11 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
                             <div className="flex items-center gap-3 mt-2">
                               <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
                               <span className="text-xs text-muted-foreground">•</span>
-                              <Price price={item.product.price} currency="KES" size="sm" />
+                              <Price price={item.product.price} currency={item.product.currency || displayCurrency} size="sm" />
                             </div>
                           </div>
                           <div className="text-right">
-                            <Price price={item.subtotal} currency="KES" size="md" className="font-bold" />
+                            <Price price={item.subtotal} currency={item.product.currency || displayCurrency} size="md" className="font-bold" />
                           </div>
                         </div>
                       ))}
@@ -1584,7 +1592,7 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
 
                       <div className="p-4 rounded-lg border bg-primary/5">
                         <h3 className="text-sm font-semibold mb-2 text-primary">Order Total</h3>
-                        <Price price={displayTotal} currency="KES" size="lg" className="font-bold" />
+                        <Price price={displayTotal} currency={displayCurrency} size="lg" className="font-bold" />
                       </div>
                     </div>
                   </div>
@@ -1616,24 +1624,24 @@ export function CheckoutPage({ cart, onComplete }: CheckoutPageProps) {
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Subtotal</span>
-                      <Price price={cart.subtotal} currency="KES" size="sm" />
+                      <Price price={cart.subtotal} currency={displayCurrency} size="sm" />
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Shipping</span>
                       {selectedShippingCost === 0 ? (
                         <span className="text-primary font-medium">Free</span>
                       ) : (
-                        <Price price={selectedShippingCost} currency="KES" size="sm" />
+                        <Price price={selectedShippingCost} currency={displayCurrency} size="sm" />
                       )}
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Tax</span>
-                      <Price price={cart.tax} currency="KES" size="sm" />
+                      <Price price={cart.tax} currency={displayCurrency} size="sm" />
                     </div>
                     <Separator />
                     <div className="flex justify-between">
                       <span className="font-semibold">Total</span>
-                      <Price price={displayTotal} currency="KES" size="lg" />
+                      <Price price={displayTotal} currency={displayCurrency} size="lg" />
                     </div>
                   </div>
                 </Card>

@@ -82,9 +82,7 @@ export function AdminProductEditPage() {
       title={product ? `Edit: ${product.title}` : 'Edit Product'}
       description="Update product details, translations, options, availability, and SKUs."
     >
-      {isLoading ? (
-        <div className="text-sm text-muted-foreground">Loading…</div>
-      ) : loadError ? (
+      {isLoading ? null : loadError ? (
         <div className="text-sm text-destructive">{loadError}</div>
       ) : !product ? (
         <div className="text-sm text-muted-foreground">Product not found.</div>

@@ -67,6 +67,7 @@ export class OrdersListResponseDto {
         shippingTotal: '0.0000',
         grandTotal: '200.0000',
         itemCount: 1,
+        shippingQuotePending: false,
         metaJson: {},
         createdAt: '2026-01-06T12:00:00.000Z',
         updatedAt: '2026-01-06T12:00:00.000Z',

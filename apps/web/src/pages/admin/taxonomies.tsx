@@ -245,7 +245,7 @@ export function AdminTaxonomiesPage() {
                 <Badge variant="secondary">{taxonomies.length}</Badge>
               </div>
               <CardDescription>
-                {isLoading ? 'Loading…' : error ? error : 'Search and select a taxonomy to edit.'}
+                {error ? error : 'Search and select a taxonomy to edit.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -254,7 +254,7 @@ export function AdminTaxonomiesPage() {
                 <CommandList>
                   <ScrollArea className="h-[360px]">
                     {visibleTaxonomies.length === 0 ? (
-                      <CommandEmpty>{isLoading ? 'Loading…' : 'No taxonomies found.'}</CommandEmpty>
+                      <CommandEmpty>No taxonomies found.</CommandEmpty>
                     ) : null}
                     {visibleTaxonomies.map((t) => {
                       const isSelected = t.id === draftId
