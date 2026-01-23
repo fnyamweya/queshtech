@@ -83,9 +83,16 @@ function normalizeGoogleComponentTypes(raw: any): string[] {
 }
 
 function inferLocationLevelsFromConfigs(schema: any, config: any): GoogleMappingCandidateForm[] {
-  const chain: string[] = Array.isArray(schema?.locationChain)
-    ? (schema.locationChain as any[]).map((x) => String(x).trim()).filter(Boolean)
+  // Handle both old format (string[]) and new format ({ type, display }[])
+  const chainRaw: any[] = Array.isArray(schema?.locationChain)
+    ? schema.locationChain
     : []
+  
+  const chain: string[] = chainRaw.map((item) => {
+    if (typeof item === 'string') return item.trim()
+    if (item && typeof item === 'object' && 'type' in item) return String(item.type || '').trim()
+    return ''
+  }).filter(Boolean)
 
   const candidatesRaw: any[] = Array.isArray(config?.googleLocationMapping?.candidates)
     ? config.googleLocationMapping.candidates

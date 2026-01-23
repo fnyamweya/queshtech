@@ -14,6 +14,7 @@ import { ShippingQuotesService } from 'src/shipping/services/shipping-quotes.ser
 import { CustomerShippingAddressService } from 'src/customer-shipping-address/services/customer-shipping-address.service';
 import { QueueService } from 'src/queue/queue.service';
 import { OrderService } from 'src/order/services/order.service';
+import { OrderPricingPipelineService } from 'src/order/services/order-pricing-pipeline.service';
 
 const CHECKOUT_QUEUE = 'checkout';
 const EXPIRE_JOB = 'expire-session';
@@ -40,6 +41,7 @@ export class CheckoutService {
     private readonly shippingQuotesService: ShippingQuotesService,
     private readonly customerShippingAddressService: CustomerShippingAddressService,
     private readonly orderService: OrderService,
+    private readonly pricingPipeline: OrderPricingPipelineService,
   ) {}
 
   private key(sessionId: string) {
@@ -278,6 +280,7 @@ export class CheckoutService {
       throw new BadRequestException('Shipping method is required');
     }
 
+    // Step 1: Create order in DRAFT status
     const order = await this.orderService.create({
       customerId: userId,
       orderItems: state.orderItems,
@@ -286,12 +289,23 @@ export class CheckoutService {
       shippingMethodCode: state.shippingMethodCode,
     });
 
+    // Step 2: Run pricing pipeline to create snapshot and compute charges
+    await this.pricingPipeline.repriceDraftOrder(order.id, {
+      currency: order.currencyCode,
+    });
+
+    // Step 3: Lock pricing at checkout boundary (prevents repricing drift)
+    await this.pricingPipeline.lockPricing(order.id, {});
+
+    // Step 4: Get the final hydrated order with pricing
+    const hydratedOrder = await this.orderService.findOneHydrated(order.id);
+
     row.status = 'completed';
     row.completedAt = new Date();
     await this.checkoutSessionRepo.save(row);
 
     await this.cache.del(this.key(sessionId));
 
-    return { sessionId, order };
+    return { sessionId, order: hydratedOrder };
   }
 }

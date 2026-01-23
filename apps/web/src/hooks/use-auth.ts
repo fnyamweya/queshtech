@@ -282,8 +282,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true)
     try {
       const api = createApiClient()
-      // Customer account creation should use Customers controller (not legacy /users or auth register).
-      await api.requestRaw(endpoints.customers.base, {
+      // Customer self-registration via /auth/customer/register endpoint
+      await api.requestRaw(endpoints.auth.customerRegister, {
         method: 'POST',
         body: {
           phone: data.phoneNumber,

@@ -164,7 +164,7 @@ const extractLocationLevelLabels = (config: AddressFieldConfig | null): string[]
     const labels = arr
       .map((x) => {
         if (typeof x === 'string') return x
-        if (x && typeof x === 'object') return x.label || x.name || x.displayName || x.type
+        if (x && typeof x === 'object') return x.display || x.label || x.name || x.displayName || x.type
         return null
       })
       .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)

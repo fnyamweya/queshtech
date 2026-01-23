@@ -1,7 +1,4 @@
-import {
-  createOrderItemChargeReversal,
-  createOrderLevelChargeReversal,
-} from '../charge-ledger.util';
+import { createOrderLevelChargeReversal } from '../charge-ledger.util';
 
 describe('charge-ledger.util', () => {
   it('creates an order-level reversal row', () => {
@@ -31,29 +28,4 @@ describe('charge-ledger.util', () => {
     expect(r.metaJson!.reason).toBe('manual_adjustment');
   });
 
-  it('creates an order-item reversal row', () => {
-    const r = createOrderItemChargeReversal({
-      original: {
-        id: 'ic1',
-        orderItemId: 'oi1',
-        chargeKind: 'tax',
-        displayName: 'Tax',
-        calculationType: 'percentage',
-        rate: '0.160000',
-        baseAmount: '180.0000',
-        quantityBasis: 2,
-        amount: '28.8000',
-        isIncludedInPrice: false,
-        sourceType: 'tax',
-        metaJson: { configuredRate: 16 },
-      },
-    });
-
-    expect(r.orderItemId).toBe('oi1');
-    expect(r.sourceType).toBe('reversal');
-    expect(r.sourceReference).toBe('ic1');
-    expect(r.amount).toBe('-28.8000');
-    expect(r.metaJson).toBeDefined();
-    expect(r.metaJson!.reversalOfChargeId).toBe('ic1');
-  });
 });

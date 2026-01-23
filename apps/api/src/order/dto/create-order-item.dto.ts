@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -20,4 +21,9 @@ export class CreateOrderItemDto {
   @IsOptional()
   @IsString()
   sku?: string;
+
+  @ApiProperty({ description: 'Whether this item requires shipping', example: true })
+  @IsOptional()
+  @IsBoolean()
+  requiresShipping?: boolean;
 }

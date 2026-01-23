@@ -99,11 +99,12 @@ export class RecommendationsService {
   private async getPurchasedProductIds(customerId: string, limit: number) {
     const rows = await this.dataSource
       .createQueryBuilder()
-      .select('oi.product_id', 'productId')
+      .select('sku.product_id', 'productId')
       .from('order_item', 'oi')
+      .innerJoin('product_sku', 'sku', 'sku.id = oi.product_sku_id')
       .innerJoin('order', 'o', 'o.id = oi.order_id')
       .where('o.customer_id = :customerId', { customerId })
-      .andWhere('oi.product_id IS NOT NULL')
+      .andWhere('sku.product_id IS NOT NULL')
       .orderBy('o.created_at', 'DESC')
       .limit(limit)
       .getRawMany<{ productId: string }>();

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useRoute, useLocation } from 'wouter'
 import { AdminLayout } from '@/components/admin/admin-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,12 +10,17 @@ import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { ArrowLeft, CheckCircle2, Truck, Clock, ReceiptText, Pencil, Plus, Trash2, CreditCard, RefreshCw, Shield } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ArrowLeft, CheckCircle2, Truck, Clock, ReceiptText, Pencil, Plus, Trash2, CreditCard, RefreshCw, Shield, Calculator, Package } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GoogleMapDemo } from '@/components/admin/google-map-demo'
 import { useAdminAuth } from '@/hooks/use-admin-auth'
 import { endpoints } from '@/lib/endpoints'
 import { toast } from 'sonner'
+import { OrderPricingPanel } from '@/components/admin/order-pricing-panel'
+import { OrderPricingActions } from '@/components/admin/order-pricing-actions'
+import { BatchPanel } from '@/components/admin/batch-panel'
+import { useOrderPricing, useBatches, useOrderPayments } from '@/hooks/use-order-pricing'
 
 const statusColors = {
   completed: 'bg-neon-green/10 text-neon-green border-neon-green/20',
@@ -189,9 +194,48 @@ export function AdminOrderDetailPage() {
   const [paymentDraft, setPaymentDraft] = useState({ amount: '', method: '', reference: '' })
   const [quoteDraft, setQuoteDraft] = useState({ amount: '', note: '' })
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false)
+  const [activeTab, setActiveTab] = useState('overview')
   const parsedOrderTotal = Number(order?.total.replace(/[^\d.]/g, '') || 0)
   const transactionTotal = transactions.reduce((sum, txn) => sum + Number(String(txn.amount).replace(/[^\d.]/g, '') || 0), 0)
   const isBalanced = parsedOrderTotal > 0 && Math.abs(parsedOrderTotal - transactionTotal) < 0.01
+
+  // Real order ID for API calls (use params?.id for real orders, or mock for demo)
+  const realOrderId = params?.id?.startsWith('ORD-') ? undefined : params?.id
+
+  // Order Pricing Hook
+  const {
+    pricing,
+    isLoading: isPricingLoading,
+    error: pricingError,
+    reprice,
+    isRepricing,
+    lockPricing,
+    isLocking,
+    applyAdjustments,
+    isApplyingAdjustments,
+    refetch: refetchPricing,
+    availableActions,
+    isLocked,
+    totals,
+  } = useOrderPricing(realOrderId, { enabled: !!realOrderId })
+
+  // Batches Hook
+  const {
+    batches,
+    isLoading: isBatchesLoading,
+    error: batchesError,
+    refetch: refetchBatches,
+    resolveBatches,
+    isResolving,
+  } = useBatches(realOrderId, { enabled: !!realOrderId })
+
+  // Payments Hook (for real payment data)
+  const {
+    payments: realPayments,
+    summary: paymentSummary,
+    isLoading: isPaymentsLoading,
+    refetch: refetchPayments,
+  } = useOrderPayments(realOrderId, { enabled: !!realOrderId })
 
   const submitShippingQuote = async () => {
     const orderId = params?.id
@@ -302,58 +346,112 @@ export function AdminOrderDetailPage() {
         {isBalanced && (
           <Badge className="bg-neon-green/15 text-neon-green border-neon-green/30">Paid in full</Badge>
         )}
+        {isLocked && (
+          <Badge className="bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Pricing Locked
+          </Badge>
+        )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between gap-3">
-            <div className="space-y-1">
-              <CardTitle>{order.customer}</CardTitle>
-              <CardDescription>{order.email} • {order.phone}</CardDescription>
+      {/* Pricing Actions Bar - visible when there's a real order */}
+      {realOrderId && (
+        <div className="mb-4 p-3 rounded-lg border bg-muted/30">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Pricing Actions</span>
             </div>
-            <Badge variant="outline" className={statusColors[order.status as keyof typeof statusColors]}>
-              {order.status}
-            </Badge>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Order total</p>
-                <p className="text-lg font-semibold">{order.total}</p>
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Payment</p>
-                <p className="text-sm font-medium">{order.payment}</p>
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Shipping</p>
-                <p className="text-sm font-medium">{order.shipping}</p>
-              </div>
-            </div>
+            <OrderPricingActions
+              orderId={realOrderId}
+              isLocked={isLocked}
+              hasPricing={(pricing?.runs?.length || 0) > 0}
+              latestRunSucceeded={pricing?.latestRunStatus === 'SUCCEEDED'}
+              currencyCode={totals.currencyCode}
+              onReprice={reprice}
+              onLockPricing={lockPricing}
+              onApplyAdjustments={applyAdjustments}
+              onRefresh={refetchPricing}
+              isRepricing={isRepricing}
+              isLocking={isLocking}
+              isApplyingAdjustments={isApplyingAdjustments}
+            />
+          </div>
+        </div>
+      )}
 
-            <div className="rounded-lg border bg-card p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1">Shipping address</p>
-                  <p className="text-sm font-medium">{order.customer}</p>
-                  <p className="text-sm text-muted-foreground">{shipping.address}</p>
-                  <p className="text-sm text-muted-foreground">{shipping.phone}</p>
-                  <p className="text-sm text-muted-foreground">Method: {shipping.method}</p>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview" className="gap-2">
+            <ReceiptText className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="pricing" className="gap-2">
+            <Calculator className="h-4 w-4" />
+            Pricing
+          </TabsTrigger>
+          <TabsTrigger value="batches" className="gap-2">
+            <Package className="h-4 w-4" />
+            Batches
+          </TabsTrigger>
+          <TabsTrigger value="payments" className="gap-2">
+            <CreditCard className="h-4 w-4" />
+            Payments
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <CardTitle>{order.customer}</CardTitle>
+                  <CardDescription>{order.email} • {order.phone}</CardDescription>
                 </div>
-                <Badge variant="secondary" className="bg-amber-50 text-amber-800 border-amber-200">Warm route</Badge>
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <Input
-                  value={shipping.address}
-                  onChange={(e) => setShipping((s) => ({ ...s, address: e.target.value }))}
-                  placeholder="Update address"
-                />
-                <Input
-                  value={shipping.phone}
-                  onChange={(e) => setShipping((s) => ({ ...s, phone: e.target.value }))}
-                  placeholder="Update phone"
-                />
-                <Input
+                <Badge variant="outline" className={statusColors[order.status as keyof typeof statusColors]}>
+                  {order.status}
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Order total</p>
+                    <p className="text-lg font-semibold">{realOrderId && totals ? `${totals.currencyCode} ${parseFloat(totals.grandTotal).toLocaleString()}` : order.total}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Payment</p>
+                    <p className="text-sm font-medium">{paymentSummary?.derivedStatus || order.payment}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Shipping</p>
+                    <p className="text-sm font-medium">{order.shipping}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-card p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-1">Shipping address</p>
+                      <p className="text-sm font-medium">{order.customer}</p>
+                      <p className="text-sm text-muted-foreground">{shipping.address}</p>
+                      <p className="text-sm text-muted-foreground">{shipping.phone}</p>
+                      <p className="text-sm text-muted-foreground">Method: {shipping.method}</p>
+                    </div>
+                    <Badge variant="secondary" className="bg-amber-50 text-amber-800 border-amber-200">Warm route</Badge>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <Input
+                      value={shipping.address}
+                      onChange={(e) => setShipping((s) => ({ ...s, address: e.target.value }))}
+                      placeholder="Update address"
+                    />
+                    <Input
+                      value={shipping.phone}
+                      onChange={(e) => setShipping((s) => ({ ...s, phone: e.target.value }))}
+                      placeholder="Update phone"
+                    />
+                    <Input
                   value={shipping.method}
                   onChange={(e) => setShipping((s) => ({ ...s, method: e.target.value }))}
                   placeholder="Shipping method"
@@ -442,7 +540,7 @@ export function AdminOrderDetailPage() {
               indicatorClassName={statusAccent[order.status as keyof typeof statusAccent]}
             />
             <ul className="space-y-4">
-              {order.timeline.map((event, idx) => (
+              {order.timeline?.map((event, idx) => (
                 <li key={`${event.label}-${idx}`} className="relative flex gap-3">
                   <div className="absolute left-2 top-0 bottom-0 w-px bg-border/80" />
                   <div className="mt-1 flex h-3 w-3 flex-none items-center justify-center rounded-full bg-muted-foreground/40 ring-2 ring-background" />
@@ -602,7 +700,421 @@ export function AdminOrderDetailPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+          </div>
+        </TabsContent>
+
+        {/* Pricing Tab */}
+        <TabsContent value="pricing" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <OrderPricingPanel
+              pricing={pricing}
+              isLoading={isPricingLoading}
+              error={pricingError}
+              onReprice={() => reprice()}
+              onRefresh={refetchPricing}
+            />
+
+            {/* Pricing Quick Stats */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calculator className="h-5 w-5" />
+                  Pricing Status
+                </CardTitle>
+                <CardDescription>
+                  Current state and available actions
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Status</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {isLocked ? (
+                        <Badge className="bg-green-100 text-green-700 border-green-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Locked
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                          Draft
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Runs</p>
+                    <p className="text-lg font-semibold">{pricing?.runs?.length || 0}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Charges</p>
+                    <p className="text-lg font-semibold">{pricing?.charges?.length || 0}</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Rules Applied</p>
+                    <p className="text-lg font-semibold">
+                      {pricing?.appliedRules?.filter(r => r.outcome === 'APPLIED').length || 0}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Availability */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Available Actions</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                      <span>Reprice Order</span>
+                      <Badge variant={availableActions.canReprice ? 'default' : 'secondary'}>
+                        {availableActions.canReprice ? 'Available' : 'Disabled'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                      <span>Lock Pricing</span>
+                      <Badge variant={availableActions.canLock ? 'default' : 'secondary'}>
+                        {availableActions.canLock ? 'Available' : 'Disabled'}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded bg-muted/30">
+                      <span>Add Adjustment</span>
+                      <Badge variant={availableActions.canAdjust ? 'default' : 'secondary'}>
+                        {availableActions.canAdjust ? 'Available' : 'Disabled'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Send Shipping Quote Card */}
+                <Separator />
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">Send Shipping Quote</p>
+                  <p className="text-xs text-muted-foreground">
+                    Enter a negotiated shipping amount to generate the customer invoice.
+                  </p>
+                  <div className="grid gap-2">
+                    <Input
+                      placeholder="Quote amount"
+                      value={quoteDraft.amount}
+                      onChange={(e) => setQuoteDraft((prev) => ({ ...prev, amount: e.target.value }))}
+                    />
+                    <Textarea
+                      placeholder="Note (optional)"
+                      value={quoteDraft.note}
+                      onChange={(e) => setQuoteDraft((prev) => ({ ...prev, note: e.target.value }))}
+                      className="min-h-[60px]"
+                    />
+                    <Button onClick={submitShippingQuote} disabled={isSubmittingQuote} className="w-full">
+                      {isSubmittingQuote ? 'Sending…' : 'Send Quote'}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Batches Tab */}
+        <TabsContent value="batches" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <BatchPanel
+              batches={batches}
+              isLoading={isBatchesLoading}
+              error={batchesError}
+              onResolve={resolveBatches}
+              onRefresh={refetchBatches}
+              isResolving={isResolving}
+            />
+
+            {/* Delivery Overview */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Truck className="h-5 w-5" />
+                  Fulfillment Overview
+                </CardTitle>
+                <CardDescription>
+                  Delivery status and tracking
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Progress
+                  value={statusProgress[order.status as keyof typeof statusProgress]}
+                  className="h-2 rounded-none bg-transparent"
+                  indicatorClassName={statusAccent[order.status as keyof typeof statusAccent]}
+                />
+                <ul className="space-y-4">
+                  {order.timeline?.map((event, idx) => (
+                    <li key={`${event.label}-${idx}`} className="relative flex gap-3">
+                      <div className="absolute left-2 top-0 bottom-0 w-px bg-border/80" />
+                      <div className="mt-1 flex h-3 w-3 flex-none items-center justify-center rounded-full bg-muted-foreground/40 ring-2 ring-background" />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold flex items-center gap-2">
+                            {event.done ? <CheckCircle2 className="h-4 w-4 text-neon-green" /> : <Clock className="h-4 w-4 text-muted-foreground" />}
+                            {event.label}
+                          </p>
+                          <time className="text-[11px] text-muted-foreground">{event.time}</time>
+                        </div>
+                        {!event.done && (
+                          <p className="text-xs text-muted-foreground">
+                            Pending action to move to next step.
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="outline">Add note</Button>
+                  <Button size="sm" className="gap-1">
+                    <Truck className="h-4 w-4" />
+                    Mark shipped
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Map */}
+            <div className="lg:col-span-2">
+              <GoogleMapDemo address={order.address} method={shipping.method} eta="3-5 PM" note="Driver contact shared after dispatch." />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Payments Tab */}
+        <TabsContent value="payments" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Payments & Transactions</CardTitle>
+                  <CardDescription>Charges, refunds, and risk review.</CardDescription>
+                </div>
+                <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                  <Shield className="h-4 w-4 mr-1" />
+                  Risk clear
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Payment Summary */}
+                {paymentSummary && (
+                  <div className="grid gap-3 sm:grid-cols-4 mb-4">
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Grand Total</p>
+                      <p className="text-lg font-semibold">{paymentSummary.currencyCode} {parseFloat(paymentSummary.grandTotal).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Captured</p>
+                      <p className="text-lg font-semibold text-green-600">{paymentSummary.currencyCode} {parseFloat(paymentSummary.capturedTotal).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Refunded</p>
+                      <p className="text-lg font-semibold text-orange-600">{paymentSummary.currencyCode} {parseFloat(paymentSummary.refundedTotal).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Balance Due</p>
+                      <p className="text-lg font-semibold">{paymentSummary.currencyCode} {parseFloat(paymentSummary.balanceDue).toLocaleString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-lg border bg-card/70 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Time</TableHead>
+                        <TableHead className="w-28"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {/* Show real payments if available, otherwise mock data */}
+                      {(realPayments && realPayments.length > 0 ? realPayments : transactions).map((txn: any) => (
+                        <TableRow key={txn.id}>
+                          <TableCell className="font-mono text-xs">{txn.id?.slice(0, 12) || txn.id}</TableCell>
+                          <TableCell>{txn.type}</TableCell>
+                          <TableCell>{txn.method || txn.provider}</TableCell>
+                          <TableCell className="font-semibold">
+                            {txn.currencyCode || 'KES'} {parseFloat(txn.amount).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                txn.status === 'SUCCEEDED' || txn.status === 'Captured'
+                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  : txn.status === 'PENDING'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-muted'
+                              )}
+                            >
+                              {txn.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {txn.confirmedAt ? new Date(txn.confirmedAt).toLocaleDateString() : txn.time || '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button variant="ghost" size="icon">
+                                <CreditCard className="h-4 w-4" />
+                              </Button>
+                              {(txn.type === 'Charge' || txn.type === 'CAPTURE') && (
+                                <Button variant="ghost" size="icon">
+                                  <RefreshCw className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Issue refund
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-2">
+                    <ReceiptText className="h-4 w-4" />
+                    Resend receipt
+                  </Button>
+                  {realOrderId && (
+                    <Button size="sm" variant="outline" onClick={refetchPayments} className="gap-2">
+                      <RefreshCw className="h-4 w-4" />
+                      Refresh
+                    </Button>
+                  )}
+                </div>
+                <div className="rounded-lg border bg-amber-50/70 p-3 space-y-2">
+                  <p className="text-sm font-semibold text-amber-900">Record a payment</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Input
+                      placeholder="Amount (e.g. KES 5,000)"
+                      value={paymentDraft.amount}
+                      onChange={(e) => setPaymentDraft((p) => ({ ...p, amount: e.target.value }))}
+                      className="bg-white"
+                    />
+                    <Input
+                      placeholder="Method (e.g. M-Pesa, Card)"
+                      value={paymentDraft.method}
+                      onChange={(e) => setPaymentDraft((p) => ({ ...p, method: e.target.value }))}
+                      className="bg-white"
+                    />
+                    <Input
+                      placeholder="Reference"
+                      value={paymentDraft.reference}
+                      onChange={(e) => setPaymentDraft((p) => ({ ...p, reference: e.target.value }))}
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-amber-500 hover:bg-amber-600 text-white"
+                      onClick={() => {
+                        if (!paymentDraft.amount || !paymentDraft.method) return
+                        setTransactions((prev) => [
+                          {
+                            id: `TRX-${Math.floor(Math.random() * 100000)}`,
+                            amount: paymentDraft.amount,
+                            method: paymentDraft.method,
+                            type: 'Charge',
+                            status: 'Captured',
+                            time: 'Just now',
+                          },
+                          ...prev,
+                        ])
+                        setPaymentDraft({ amount: '', method: '', reference: '' })
+                      }}
+                    >
+                      <CreditCard className="h-4 w-4 mr-1" />
+                      Record payment
+                    </Button>
+                    <p className="text-xs text-amber-900">Captured payments update totals automatically.</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payment Lock Status */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Payment Guard
+                </CardTitle>
+                <CardDescription>
+                  Pricing must be locked before payment capture
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    {isLocked ? (
+                      <CheckCircle2 className="h-8 w-8 text-green-600" />
+                    ) : (
+                      <Clock className="h-8 w-8 text-amber-600" />
+                    )}
+                    <div>
+                      <p className="font-medium">
+                        {isLocked ? 'Ready for Payment' : 'Pricing Not Locked'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {isLocked
+                          ? 'Payment capture is allowed. Price is immutable.'
+                          : 'Lock pricing before accepting payment to prevent quote drift.'}
+                      </p>
+                    </div>
+                  </div>
+                  {!isLocked && realOrderId && (
+                    <Button
+                      onClick={() => lockPricing()}
+                      disabled={isLocking || !availableActions.canLock}
+                      className="w-full gap-2"
+                    >
+                      {isLocking ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      {isLocking ? 'Locking...' : 'Lock Pricing Now'}
+                    </Button>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium">Payment Guards</p>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Pricing immutable after lock
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Stale quote detection via fingerprint
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Capture blocked without lock
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      Adjustments append-only after lock
+                    </li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </AdminLayout>
   )
 }

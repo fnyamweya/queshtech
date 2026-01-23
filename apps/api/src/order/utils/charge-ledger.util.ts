@@ -18,11 +18,6 @@ export type OrderLevelChargeCreate = Omit<ChargeLike, 'id'> & {
   appliesToShipping: boolean;
 };
 
-export type OrderItemChargeCreate = Omit<ChargeLike, 'id'> & {
-  orderItemId: string;
-  quantityBasis?: number | null;
-};
-
 function safeMeta(
   meta: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> {
@@ -84,47 +79,3 @@ export function createOrderLevelChargeReversal(opts: {
   };
 }
 
-export function createOrderItemChargeReversal(opts: {
-  original: {
-    id: string;
-    orderItemId: string;
-    chargeKind: string;
-    code?: string | null;
-    displayName: string;
-    calculationType: string;
-    rate?: string | null;
-    baseAmount?: string | null;
-    quantityBasis?: number | null;
-    amount: string;
-    isIncludedInPrice: boolean;
-    sourceType?: string | null;
-    sourceReference?: string | null;
-    metaJson?: Record<string, unknown> | null;
-  };
-  reason?: string;
-  meta?: Record<string, unknown>;
-}): OrderItemChargeCreate {
-  const { original, reason, meta } = opts;
-  return {
-    orderItemId: original.orderItemId,
-    chargeKind: original.chargeKind,
-    code: original.code ?? undefined,
-    displayName: `${original.displayName} (Reversal)`,
-    calculationType: 'fixed',
-    rate: undefined,
-    baseAmount: original.baseAmount ?? undefined,
-    quantityBasis: original.quantityBasis ?? undefined,
-    amount: negateAmount(original.amount),
-    isIncludedInPrice: original.isIncludedInPrice,
-    sourceType: 'reversal',
-    sourceReference: original.id,
-    metaJson: {
-      ...safeMeta(original.metaJson),
-      reversalOfChargeId: original.id,
-      originalSourceType: original.sourceType ?? undefined,
-      originalSourceReference: original.sourceReference ?? undefined,
-      reason: reason ?? undefined,
-      ...(meta ?? {}),
-    },
-  };
-}

@@ -346,9 +346,10 @@ export class ProductReviewService {
       .createQueryBuilder()
       .select('1')
       .from('order_item', 'oi')
+      .innerJoin('product_sku', 'sku', 'sku.id = oi.product_sku_id')
       .innerJoin('order', 'o', 'o.id = oi.order_id')
       .where('o.customer_id = :customerId', { customerId })
-      .andWhere('oi.product_id = :productId', { productId })
+      .andWhere('sku.product_id = :productId', { productId })
       .andWhere("o.status IN ('confirmed', 'completed')")
       .limit(1)
       .getRawOne();

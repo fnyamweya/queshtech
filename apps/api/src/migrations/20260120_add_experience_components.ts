@@ -4,6 +4,7 @@ export class AddExperienceComponents20260120120000 implements MigrationInterface
   name = 'AddExperienceComponents20260120120000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Create experience_component table
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "experience_component" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -23,20 +24,32 @@ export class AddExperienceComponents20260120120000 implements MigrationInterface
 
       CREATE INDEX IF NOT EXISTS "IDX_experience_component_type"
         ON "experience_component" ("type");
-
-      ALTER TABLE "experience_block"
-        ADD COLUMN IF NOT EXISTS "component_id" uuid;
-
-      CREATE INDEX IF NOT EXISTS "IDX_experience_block_component"
-        ON "experience_block" ("component_id");
-
-      ALTER TABLE "experience_block"
-        ADD CONSTRAINT "FK_experience_block_component"
-        FOREIGN KEY ("component_id")
-        REFERENCES "experience_component"("id")
-        ON DELETE SET NULL
-        ON UPDATE NO ACTION;
     `);
+
+    // Only add component_id to experience_block if the table exists
+    const tableExists = await queryRunner.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'experience_block'
+      );
+    `);
+
+    if (tableExists?.[0]?.exists) {
+      await queryRunner.query(`
+        ALTER TABLE "experience_block"
+          ADD COLUMN IF NOT EXISTS "component_id" uuid;
+
+        CREATE INDEX IF NOT EXISTS "IDX_experience_block_component"
+          ON "experience_block" ("component_id");
+
+        ALTER TABLE "experience_block"
+          ADD CONSTRAINT "FK_experience_block_component"
+          FOREIGN KEY ("component_id")
+          REFERENCES "experience_component"("id")
+          ON DELETE SET NULL
+          ON UPDATE NO ACTION;
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

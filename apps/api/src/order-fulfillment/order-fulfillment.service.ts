@@ -15,6 +15,12 @@ import { OrderFulfillmentStatus } from './order-fulfillment.types';
 import { OrderEventsService, OrderEventActor } from '../order-events/order-events.service';
 import { OrderEventTargetType } from '../order-events/order-events.types';
 import { AccountingService } from '../accounting/accounting.service';
+import {
+  ChargeAllocation,
+  ChargeComponent,
+  OrderPricingSnapshot,
+  PricingRun,
+} from '../pricing/entities';
 
 function toMoneyString(amount: number): string {
   if (!Number.isFinite(amount)) throw new BadRequestException('Invalid amount');
@@ -103,11 +109,7 @@ export class OrderFulfillmentService {
       const fQty = fulfilledMap.get(item.id) ?? 0;
       if (fQty > 0) any = true;
       if (fQty < item.quantity) all = false;
-      // keep item-level status aligned
-      (item as any).fulfillmentStatus = fQty <= 0 ? 'unfulfilled' : fQty < item.quantity ? 'partial' : 'fulfilled';
     }
-
-    await orderItemRepository.save(shippable as any);
 
     order.fulfillmentStatus = !any
       ? OrderFulfillmentAggregateStatus.UNFULFILLED
@@ -605,11 +607,49 @@ export class OrderFulfillmentService {
         const items = await orderItemRepository.find({ where: { orderId } });
         const itemsById = new Map(items.map((i) => [i.id, i] as const));
 
+        const itemTotals = new Map<string, number>();
+        const snapshot = await manager
+          .getRepository(OrderPricingSnapshot)
+          .findOne({ where: { orderId }, select: ['id'] as any });
+        if (snapshot) {
+          const run = await manager.getRepository(PricingRun).findOne({
+            where: { snapshotId: snapshot.id, status: 'SUCCEEDED', kind: 'STANDARD' },
+            order: { createdAt: 'DESC' as any },
+          });
+
+          if (run) {
+            const charges = await manager.getRepository(ChargeComponent).find({
+              where: { snapshotId: snapshot.id, pricingRunId: run.id },
+            });
+            const allocations = await manager.getRepository(ChargeAllocation).find({
+              where: { snapshotId: snapshot.id, pricingRunId: run.id },
+            });
+
+            for (const item of items) {
+              const itemCharges = charges.filter((c) => c.orderItemId === item.id);
+              const base = itemCharges
+                .filter((c) => c.chargeType === 'BASE')
+                .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+              const tax = itemCharges
+                .filter((c) => c.chargeType === 'TAX')
+                .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+              const fee = itemCharges
+                .filter((c) => c.chargeType === 'FEE')
+                .reduce((sum, c) => sum + Number(c.amount || 0), 0);
+              const discount = allocations
+                .filter((a) => a.orderItemId === item.id)
+                .reduce((sum, a) => sum + Number(a.amount || 0), 0);
+
+              itemTotals.set(item.id, base + tax + fee + discount);
+            }
+          }
+        }
+
         const deliveredAmount = (f.fulfillmentItems ?? []).reduce((acc, fi) => {
           const item = itemsById.get(fi.orderItemId);
           if (!item) return acc;
           const qty = Number(item.quantity || 0);
-          const total = Number(item.total || 0);
+          const total = Number(itemTotals.get(item.id) ?? 0);
           if (!Number.isFinite(qty) || qty <= 0) return acc;
           if (!Number.isFinite(total)) return acc;
           const unit = total / qty;

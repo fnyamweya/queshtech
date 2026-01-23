@@ -17,7 +17,7 @@ import { PricebookRevision } from './pricebook-revision.entity';
 export interface PricingRuntimeContext {
   warehouseGrouping?: string;
   carrierQuotes?: Record<string, string>;
-  deliveryGroups?: Array<{
+  batches?: Array<{
     id: string;
     warehouseId?: string;
     itemIds: string[];

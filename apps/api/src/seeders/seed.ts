@@ -13,6 +13,7 @@ import { WhatsappTemplateSeeder } from '../whatsapp/seeders/whatsapp-template.se
 import { CurrencySeeder } from '../currency/seeders/currency.seeder';
 import { PaymentProviderSeeder } from '../payment-provider/seeders/payment-provider.seeder';
 import { PaymentMethodSeeder } from '../payment-method/seeders/payment-method.seeder';
+import { PricebookSeeder } from '../pricing/seeders/pricebook.seeder';
 
 async function runSeeders() {
   console.log('🌱 Starting database seeding...');
@@ -33,6 +34,7 @@ async function runSeeders() {
     const currencySeeder = app.get(CurrencySeeder);
     const paymentProviderSeeder = app.get(PaymentProviderSeeder);
     const paymentMethodSeeder = app.get(PaymentMethodSeeder);
+    const pricebookSeeder = app.get(PricebookSeeder);
 
     console.log('⚙️ Seeding application settings...');
     await settingSeeder.seed();
@@ -103,6 +105,14 @@ async function runSeeders() {
       console.warn(
         '⚠️ Shipping seeder skipped/unavailable in this environment',
       );
+    }
+
+    console.log('📖 Seeding pricebook data (default pricebook + revision + assignment)...');
+    try {
+      await pricebookSeeder.seed();
+      console.log('✅ Pricebook seeding completed');
+    } catch (err) {
+      console.warn('⚠️ Pricebook seeder failed:', err);
     }
 
     console.log('🎉 All seeders completed successfully!');

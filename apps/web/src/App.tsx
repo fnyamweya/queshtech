@@ -18,6 +18,7 @@ import { CartPage } from '@/pages/cart'
 import { CheckoutPage } from '@/pages/checkout'
 import { ProfilePage } from '@/pages/profile'
 import { TrackOrderPage } from '@/pages/track-order'
+import { CustomerOrderDetailPage } from '@/pages/customer-order-detail'
 import { LoginPage } from '@/pages/login'
 import { SignupPage } from '@/pages/signup'
 import { ForgotPasswordPage } from '@/pages/forgot-password'
@@ -273,6 +274,9 @@ function App() {
                 </Route>
                 <Route path="/profile/:tab?">
                   <ProfilePage />
+                </Route>
+                <Route path="/orders/:id">
+                  <CustomerOrderDetailPage />
                 </Route>
                 <Route path="/track-order">
                   <TrackOrderPage />

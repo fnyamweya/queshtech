@@ -9,15 +9,20 @@ import { CatalogSeeder } from '../src/catalog/seeders/catalog.seeder';
 import { ShippingSeeder } from '../src/shipping/seeders/shipping.seeder';
 import { AuthSeeder } from '../src/auth/seeders/auth.seeder';
 import { ChannelsSeeder } from '../src/channels/seeders/channels.seeder';
+import { PricebookSeeder } from '../src/pricing/seeders/pricebook.seeder';
 import { ProductSku } from '../src/catalog/entities/product-sku.entity';
 import { Location, LocationType } from '../src/location/entities/location.entity';
 import { CheckoutSession } from '../src/checkout/entities/checkout-session.entity';
+import { OrderPricingSnapshot } from '../src/pricing/entities';
+import { Order } from '../src/order/entities/order.entity';
 
 describe('Checkout E2E', () => {
   let app: INestApplication;
   let skuRepo: Repository<ProductSku>;
   let locationRepo: Repository<Location>;
   let sessionRepo: Repository<CheckoutSession>;
+  let snapshotRepo: Repository<OrderPricingSnapshot>;
+  let orderRepo: Repository<Order>;
 
   beforeAll(async () => {
     const t = await createTestApp();
@@ -31,6 +36,7 @@ describe('Checkout E2E', () => {
     const authSeeder = app.get(AuthSeeder);
     const catalogSeeder = app.get(CatalogSeeder);
     const shippingSeeder = app.get(ShippingSeeder);
+    const pricebookSeeder = app.get(PricebookSeeder);
 
     await settingSeeder.seed();
     await locationSeeder.seed();
@@ -38,10 +44,13 @@ describe('Checkout E2E', () => {
     await authSeeder.seed();
     await catalogSeeder.seed();
     await shippingSeeder.seed();
+    await pricebookSeeder.seed();
 
     skuRepo = app.get(getRepositoryToken(ProductSku));
     locationRepo = app.get(getRepositoryToken(Location));
     sessionRepo = app.get(getRepositoryToken(CheckoutSession));
+    snapshotRepo = app.get(getRepositoryToken(OrderPricingSnapshot));
+    orderRepo = app.get(getRepositoryToken(Order));
   }, 120000);
 
   afterAll(async () => {
@@ -49,9 +58,9 @@ describe('Checkout E2E', () => {
   });
 
   it('runs the full checkout flow (session -> delivery -> shipping -> review -> confirm)', async () => {
-    const sku = await skuRepo.findOne({ where: { sku: 'PHONE-001' } });
+    const sku = await skuRepo.findOne({ where: { sku: 'NOVA-X-BLK-128' } });
     expect(sku).toBeDefined();
-    if (!sku) throw new Error('Seeded SKU PHONE-001 not found');
+    if (!sku) throw new Error('Seeded SKU NOVA-X-BLK-128 not found');
 
     // Ensure weight is non-zero so per_weight rates produce a non-zero amount (useful for shipping-method assertions).
     await skuRepo.update({ id: sku.id } as any, { weight: '1' } as any);
@@ -145,6 +154,16 @@ describe('Checkout E2E', () => {
 
     const order = confirmRes.body?.data?.order;
     expect(order?.id).toBeDefined();
+
+    // Verify order has pricing snapshot (created during checkout)
+    const snapshot = await snapshotRepo.findOne({ where: { orderId: order.id } });
+    expect(snapshot).toBeDefined();
+    expect(snapshot!.lockedAt).not.toBeNull(); // Pricing should be locked at checkout
+
+    // Verify order status is ready_for_payment (after pricing lock)
+    const dbOrder = await orderRepo.findOne({ where: { id: order.id } });
+    expect(dbOrder).toBeDefined();
+    expect(dbOrder!.status).toBe('ready_for_payment');
 
     // DB session is marked completed
     const dbSession = await sessionRepo.findOne({ where: { id: sessionId } });

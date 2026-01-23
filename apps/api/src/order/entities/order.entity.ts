@@ -14,6 +14,7 @@ import { OrderItem } from './order-item.entity';
 import { OrderLevelCharge } from './order-level-charge.entity';
 
 export enum OrderStatus {
+  DRAFT = 'draft',
   PENDING = 'pending',
   AWAITING_SHIPPING_QUOTE = 'awaiting_shipping_quote',
   READY_FOR_PAYMENT = 'ready_for_payment',
@@ -25,6 +26,7 @@ export enum OrderStatus {
 export enum FinancialStatus {
   UNPAID = 'unpaid',
   AUTHORIZED = 'authorized',
+  PARTIALLY_PAID = 'partially_paid',
   PAID = 'paid',
   REFUNDED = 'refunded',
 }

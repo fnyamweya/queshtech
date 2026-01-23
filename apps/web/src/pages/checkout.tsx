@@ -137,13 +137,17 @@ const extractLocationLevelLabels = (config: AddressFieldConfig | null): string[]
     config.locationPath,
     config.hierarchy,
     config.levels,
+    config.schemaJson?.locationChain,
+    config.data?.schemaJson?.locationChain,
+    config.schema?.locationChain,
+    config.data?.schema?.locationChain,
   ].filter(Array.isArray) as any[][]
 
   for (const arr of directArrays) {
     const labels = arr
       .map((x) => {
         if (typeof x === 'string') return x
-        if (x && typeof x === 'object') return x.label || x.name || x.displayName || x.type
+        if (x && typeof x === 'object') return x.display || x.label || x.name || x.displayName || x.type
         return null
       })
       .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { useMemo } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -19,10 +20,10 @@ import {
   X
 } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
-import type { Order } from '@/types'
+import type { CustomerOrderDetail } from '@/types/customer-orders'
 
 interface OrderDetailModalProps {
-  order: Order | null
+  order: CustomerOrderDetail | null
   isOpen: boolean
   onClose: () => void
 }
@@ -33,7 +34,8 @@ const statusColors = {
   shipped: 'bg-purple-500/10 text-purple-700 dark:text-purple-400',
   delivered: 'bg-green-500/10 text-green-700 dark:text-green-400',
   cancelled: 'bg-red-500/10 text-red-700 dark:text-red-400',
-}
+  completed: 'bg-green-500/10 text-green-700 dark:text-green-400',
+} as const
 
 const statusIcons = {
   pending: Clock,
@@ -41,12 +43,13 @@ const statusIcons = {
   shipped: Truck,
   delivered: CheckCircle,
   cancelled: X,
-}
+  completed: CheckCircle,
+} as const
 
 export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalProps) {
   if (!order) return null
 
-  const orderCurrency = order.items?.[0]?.product?.currency || ''
+  const orderCurrency = order.currencyCode || order.items?.[0]?.currencyCode || ''
 
   const formatPrice = (price: number, currency?: string | null) => {
     const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
@@ -58,12 +61,28 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
     }).format(price)
   }
 
-  const StatusIcon = statusIcons[order.status]
+  const StatusIcon = statusIcons[order.status as keyof typeof statusIcons] || Package
+  const statusClass = statusColors[order.status as keyof typeof statusColors] || statusColors.pending
   const hasShipping =
     Boolean(order.shippingAddress?.address1) ||
     Boolean(order.shippingAddress?.city) ||
-    Boolean(order.shippingAddress?.phone)
-  const hasPayment = Boolean(order.paymentMethod?.label) || Boolean(order.paymentMethod?.type)
+    Boolean(order.shippingAddress?.phone) ||
+    Boolean(order.shippingAddressSummary)
+  const hasPayment =
+    Boolean(order.paymentMethod?.label) ||
+    Boolean(order.paymentMethod?.type) ||
+    Boolean(order.paymentSummary?.status)
+
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, typeof order.items>()
+    for (const item of order.items || []) {
+      const key = item.productName || 'Item'
+      const list = groups.get(key) || []
+      list.push(item)
+      groups.set(key, list)
+    }
+    return Array.from(groups.entries())
+  }, [order.items])
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -84,7 +103,7 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                 <div className="text-sm font-mono text-muted-foreground">{order.orderNumber}</div>
               </div>
             </div>
-            <Badge className={cn('gap-2 px-3 py-1.5 border-0', statusColors[order.status])}>
+            <Badge className={cn('gap-2 px-3 py-1.5 border-0', statusClass)}>
               <StatusIcon size={16} weight="bold" />
               {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
             </Badge>
@@ -133,34 +152,67 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                 Order Items
               </h3>
               <div className="space-y-3">
-                {order.items.map((item, index) => (
+                {groupedItems.map(([productName, items], index) => (
                   <motion.div
-                    key={item.id}
+                    key={productName}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.2 + index * 0.05 }}
-                    className="flex gap-4 p-3 rounded-lg bg-muted/30"
+                    className="rounded-lg border bg-muted/20"
                   >
-                    {item.product.images && item.product.images.length > 0 && (
-                      <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-                        <img 
-                          src={item.product.images[0].url} 
-                          alt={item.product.name} 
-                          className="w-full h-full object-cover" 
-                        />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium mb-1 line-clamp-2">{item.product.name}</div>
-                      {Object.keys(item.selectedVariants).length > 0 && (
-                        <div className="text-xs text-muted-foreground mb-1">
-                          {Object.entries(item.selectedVariants).map(([key, value]) => `${key}: ${value}`).join(' • ')}
+                    <div className="flex items-start gap-4 p-4">
+                      {items[0]?.imageUrl ? (
+                        <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                          <img
+                            src={items[0].imageUrl}
+                            alt={productName}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
-                      )}
-                      <div className="flex items-center gap-3 mt-2">
-                        <span className="text-sm text-muted-foreground">Qty: {item.quantity}</span>
-                        <span className="font-semibold">{formatPrice(item.price, item.product?.currency || orderCurrency)}</span>
+                      ) : null}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-base">{productName}</div>
+                        {items.length > 1 ? (
+                          <div className="text-xs text-muted-foreground mt-1">{items.length} variants</div>
+                        ) : null}
                       </div>
+                    </div>
+                    <div className="border-t">
+                      {items.map((item) => (
+                        <div key={item.id} className="flex flex-col gap-2 px-4 py-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-medium">
+                                {item.productName || productName}
+                              </div>
+                              {item.skuTitle || item.sku ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {item.skuTitle || item.sku}
+                                </div>
+                              ) : null}
+                              {item.options && Object.keys(item.options).length > 0 ? (
+                                <div className="text-xs text-muted-foreground">
+                                  {Object.entries(item.options).map(([key, value]) => `${key}: ${value}`).join(' • ')}
+                                </div>
+                              ) : null}
+                              {item.sku ? (
+                                <div className="text-xs text-muted-foreground">SKU: {item.sku}</div>
+                              ) : null}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-muted-foreground">Qty: {item.quantity}</span>
+                              <span className="font-semibold">
+                                {formatPrice(item.price, item.currencyCode || orderCurrency)}
+                              </span>
+                            </div>
+                          </div>
+                          {item.options && Object.keys(item.options).length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              {Object.entries(item.options).map(([key, value]) => `${key}: ${value}`).join(' • ')}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </motion.div>
                 ))}
@@ -183,9 +235,12 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
               </h3>
               {hasShipping ? (
                 <div className="text-sm text-muted-foreground space-y-1">
-                  <div className="font-medium text-foreground">
-                    {order.shippingAddress?.firstName} {order.shippingAddress?.lastName}
-                  </div>
+                  {(order.shippingName || order.shippingAddress?.firstName || order.shippingAddress?.lastName) && (
+                    <div className="font-medium text-foreground">
+                      {order.shippingName || `${order.shippingAddress?.firstName || ''} ${order.shippingAddress?.lastName || ''}`.trim()}
+                    </div>
+                  )}
+                  {order.shippingAddressSummary ? <div>{order.shippingAddressSummary}</div> : null}
                   {order.shippingAddress?.address1 ? <div>{order.shippingAddress.address1}</div> : null}
                   {order.shippingAddress?.address2 ? <div>{order.shippingAddress.address2}</div> : null}
                   {order.shippingAddress?.city || order.shippingAddress?.state ? (
@@ -195,7 +250,8 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                     </div>
                   ) : null}
                   {order.shippingAddress?.postalCode ? <div>{order.shippingAddress.postalCode}</div> : null}
-                  {order.shippingAddress?.phone ? <div className="pt-1">{order.shippingAddress.phone}</div> : null}
+                  {order.shippingPhone ? <div className="pt-1">{order.shippingPhone}</div> : null}
+                  {order.shippingAddress?.phone && !order.shippingPhone ? <div className="pt-1">{order.shippingAddress.phone}</div> : null}
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground">Not available yet.</div>
@@ -213,6 +269,9 @@ export function OrderDetailModal({ order, isOpen, onClose }: OrderDetailModalPro
                     <div className="font-medium text-foreground capitalize">{order.paymentMethod.type}</div>
                   ) : null}
                   {order.paymentMethod?.label ? <div className="mt-1">{order.paymentMethod.label}</div> : null}
+                  {order.paymentSummary?.status ? (
+                    <div className="mt-1">{order.paymentSummary.status}</div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground">Not available yet.</div>

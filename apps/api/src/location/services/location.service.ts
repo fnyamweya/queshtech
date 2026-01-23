@@ -33,6 +33,10 @@ export class LocationService {
     return this.addressFieldConfigService.getLocationChain(countryCode);
   }
 
+  private async getChainFull(countryCode: string): Promise<Array<{ type: string; display: string }>> {
+    return this.addressFieldConfigService.getLocationChainFull(countryCode);
+  }
+
   private allowedChildTypesFromChain(
     chain: string[],
     parentType: string,
@@ -52,6 +56,7 @@ export class LocationService {
     const countryCode = country.countryCode?.toUpperCase();
     if (!countryCode) throw new BadRequestException('countryCode is missing');
     const chain = await this.getChain(countryCode);
+    const chainFull = await this.getChainFull(countryCode);
 
     if (params.parentId) {
       const parent = await this.locationRepo.findOne({
@@ -67,6 +72,7 @@ export class LocationService {
         parentType: parent.type,
         allowedChildTypes: this.allowedChildTypesFromChain(chain, parent.type),
         chain,
+        locationChain: chainFull,
       };
     }
 
@@ -78,6 +84,7 @@ export class LocationService {
         parentType: null,
         allowedChildTypes: chain.length ? [chain[0]] : [LocationType.COUNTRY],
         chain,
+        locationChain: chainFull,
       };
     }
 
@@ -90,6 +97,7 @@ export class LocationService {
         params.parentType,
       ),
       chain,
+      locationChain: chainFull,
     };
   }
 

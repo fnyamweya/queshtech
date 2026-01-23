@@ -4,8 +4,21 @@ function mockRepo(overrides: Partial<any> = {}) {
   return {
     find: jest.fn().mockResolvedValue([]),
     findOne: jest.fn().mockResolvedValue(undefined),
+    query: jest.fn().mockResolvedValue([]),
     ...overrides,
   } as any;
+}
+
+/**
+ * Helper to construct a zoneMethodRepo mock that returns the given methods
+ * as if they were eagerly loaded via the `method` relation.
+ */
+function mockZoneMethodRepoWith(methods: any[]) {
+  return mockRepo({
+    find: jest.fn().mockResolvedValue(
+      methods.map((m) => ({ zoneId: m.zoneId ?? 'g1', isActive: true, method: m })),
+    ),
+  });
 }
 
 describe('ShippingMatrixService', () => {
@@ -19,11 +32,13 @@ describe('ShippingMatrixService', () => {
   let cache: any;
 
   beforeEach(() => {
+    // Default: global zone exists so all tests without locationId get zone 'g1'
     zoneRepo = mockRepo({
       findOne: jest.fn().mockResolvedValue({ id: 'g1', code: 'global' }),
     });
     locRepo = mockRepo();
     methodRepo = mockRepo();
+    // Default empty - each test overrides
     zoneMethodRepo = mockRepo();
     rateRepo = mockRepo();
     channelRepo = mockRepo();
@@ -46,10 +61,12 @@ describe('ShippingMatrixService', () => {
   });
 
   it('calculates flat rate', async () => {
-    locRepo.find.mockResolvedValue([{ zoneId: 'z1' }]);
-    methodRepo.find.mockResolvedValue([
-      { id: 'm1', zoneId: 'z1', isActive: true },
+    // The service resolves global zone 'g1' (mocked above),
+    // then finds zone-methods via zoneMethodRepo.find({ where: { zoneId: In(['g1']), isActive: true }, relations: ['method'] })
+    zoneMethodRepo.find.mockResolvedValue([
+      { zoneId: 'g1', isActive: true, method: { id: 'm1', code: 'standard', isActive: true } },
     ]);
+
     rateRepo.find.mockResolvedValue([
       {
         id: 'r1',
@@ -67,9 +84,8 @@ describe('ShippingMatrixService', () => {
   });
 
   it('calculates per_weight rate', async () => {
-    locRepo.find.mockResolvedValue([{ zoneId: 'z1' }]);
-    methodRepo.find.mockResolvedValue([
-      { id: 'm1', zoneId: 'z1', isActive: true },
+    zoneMethodRepo.find.mockResolvedValue([
+      { zoneId: 'g1', isActive: true, method: { id: 'm1', code: 'weight', isActive: true } },
     ]);
     rateRepo.find.mockResolvedValue([
       {
@@ -88,9 +104,8 @@ describe('ShippingMatrixService', () => {
   });
 
   it('calculates per_item rate', async () => {
-    locRepo.find.mockResolvedValue([{ zoneId: 'z1' }]);
-    methodRepo.find.mockResolvedValue([
-      { id: 'm1', zoneId: 'z1', isActive: true },
+    zoneMethodRepo.find.mockResolvedValue([
+      { zoneId: 'g1', isActive: true, method: { id: 'm1', code: 'per-item', isActive: true } },
     ]);
     rateRepo.find.mockResolvedValue([
       {
@@ -109,9 +124,8 @@ describe('ShippingMatrixService', () => {
   });
 
   it('calculates table_rate by subtotal', async () => {
-    locRepo.find.mockResolvedValue([{ zoneId: 'z1' }]);
-    methodRepo.find.mockResolvedValue([
-      { id: 'm1', zoneId: 'z1', isActive: true },
+    zoneMethodRepo.find.mockResolvedValue([
+      { zoneId: 'g1', isActive: true, method: { id: 'm1', code: 'table', isActive: true } },
     ]);
     rateRepo.find.mockResolvedValue([
       {
@@ -138,9 +152,8 @@ describe('ShippingMatrixService', () => {
   });
 
   it('calculates formula rate', async () => {
-    locRepo.find.mockResolvedValue([{ zoneId: 'z1' }]);
-    methodRepo.find.mockResolvedValue([
-      { id: 'm1', zoneId: 'z1', isActive: true },
+    zoneMethodRepo.find.mockResolvedValue([
+      { zoneId: 'g1', isActive: true, method: { id: 'm1', code: 'formula', isActive: true } },
     ]);
     rateRepo.find.mockResolvedValue([
       {
@@ -158,9 +171,8 @@ describe('ShippingMatrixService', () => {
   });
 
   it('handles zero weight for per_weight rates (regression test)', async () => {
-    locRepo.find.mockResolvedValue([{ zoneId: 'z1' }]);
-    methodRepo.find.mockResolvedValue([
-      { id: 'm1', zoneId: 'z1', isActive: true },
+    zoneMethodRepo.find.mockResolvedValue([
+      { zoneId: 'g1', isActive: true, method: { id: 'm1', code: 'weight', isActive: true } },
     ]);
     rateRepo.find.mockResolvedValue([
       {

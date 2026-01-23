@@ -4,10 +4,21 @@ import { Repository } from 'typeorm';
 import { AddressFieldConfig } from '../entities/address-field-config.entity';
 import { LocationType } from '../../location/entities/location.entity';
 
+export interface LocationChainItem {
+  type: string;
+  display: string;
+}
+
 const DEFAULT_KE_SCHEMA: Record<string, unknown> = {
   version: 1,
   // Frontend can use this to drive parent->child selection via /api/v1/locations
-  locationChain: ['country', 'county', 'sub_county', 'ward', 'town'],
+  locationChain: [
+    { type: 'country', display: 'Country' },
+    { type: 'county', display: 'County' },
+    { type: 'sub_county', display: 'Sub-County' },
+    { type: 'ward', display: 'Ward' },
+    { type: 'town', display: 'Town' },
+  ],
   fields: [
     { key: 'firstName', type: 'text', required: true },
     { key: 'lastName', type: 'text', required: true },
@@ -62,31 +73,61 @@ export class AddressFieldConfigService {
     return this.repo.save(row);
   }
 
-  async getLocationChain(countryCode: string): Promise<string[]> {
+  /**
+   * Get location chain with display names
+   */
+  async getLocationChainFull(countryCode: string): Promise<LocationChainItem[]> {
     const active = await this.getActive(countryCode);
     const schemaJson = (active as any)?.schemaJson as
       | Record<string, unknown>
       | undefined;
     const raw = schemaJson?.locationChain ?? [];
 
-    // If not configured, fall back to a sensible default for KE (and generic otherwise)
-    const fallback: string[] =
+    // Default fallback with display names
+    const fallback: LocationChainItem[] =
       (countryCode || 'KE').toUpperCase() === 'KE'
         ? [
-            LocationType.COUNTRY,
-            LocationType.COUNTY,
-            LocationType.SUB_COUNTY,
-            LocationType.WARD,
-            LocationType.TOWN,
+            { type: LocationType.COUNTRY, display: 'Country' },
+            { type: LocationType.COUNTY, display: 'County' },
+            { type: LocationType.SUB_COUNTY, display: 'Sub-County' },
+            { type: LocationType.WARD, display: 'Ward' },
+            { type: LocationType.TOWN, display: 'Town' },
           ]
-        : [LocationType.COUNTRY];
+        : [{ type: LocationType.COUNTRY, display: 'Country' }];
 
     const chain = Array.isArray(raw) ? raw : [];
-    const normalized = chain
-      .map((t) => String(t))
-      .map((t) => t.trim().toLowerCase())
-      .filter((t) => !!t);
+
+    // Handle both old format (string[]) and new format (LocationChainItem[])
+    const normalized: LocationChainItem[] = chain
+      .map((item) => {
+        if (typeof item === 'string') {
+          // Legacy format: convert string to object with auto-generated display
+          const type = item.trim().toLowerCase();
+          const display = type
+            .split('_')
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
+          return { type, display };
+        }
+        if (item && typeof item === 'object' && 'type' in item) {
+          // New format: { type, display }
+          return {
+            type: String(item.type || '').trim().toLowerCase(),
+            display: String(item.display || item.type || '').trim(),
+          };
+        }
+        return null;
+      })
+      .filter((item): item is LocationChainItem => item !== null && !!item.type);
 
     return normalized.length ? normalized : fallback;
+  }
+
+  /**
+   * Get location chain types only (for backwards compatibility)
+   */
+  async getLocationChain(countryCode: string): Promise<string[]> {
+    const chain = await this.getLocationChainFull(countryCode);
+    return chain.map((item) => item.type);
   }
 }

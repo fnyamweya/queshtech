@@ -14,12 +14,12 @@ import {
   User,
 } from '@phosphor-icons/react'
 
-import type { Address, Order, Product, WishlistItem } from '@/types'
+import type { Address, Product, WishlistItem } from '@/types'
+import type { CustomerOrderSummary } from '@/types/customer-orders'
 import type { NewsletterFrequency, ThemeMode, UserProfilePreferences } from '@/types/profilePreferences'
 import { DEFAULT_PROFILE_PREFERENCES } from '@/types/profilePreferences'
 
 import { ConfirmDialog } from '@/components/commerce/confirm-dialog'
-import { OrderDetailModal } from '@/components/commerce/order-detail-modal'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,7 @@ import { useCart } from '@/hooks/use-cart'
 import { useStorage } from '@/hooks/use-storage'
 import { useTheme } from '@/hooks/use-theme'
 import { useWishlist } from '@/hooks/use-wishlist'
+import { useCustomerOrders } from '@/hooks/use-customer-orders'
 
 type ProfileSection = 'overview' | 'orders' | 'addresses' | 'wishlist' | 'settings'
 
@@ -53,7 +54,9 @@ const sections: Array<{
   { id: 'settings', label: 'Settings', description: 'Notifications and privacy', href: '/profile/settings', icon: Gear },
 ]
 
-const statusBadgeVariant: Record<Order['status'], 'outline' | 'secondary' | 'success' | 'warning' | 'destructive'> = {
+type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+
+const statusBadgeVariant: Record<OrderStatus, 'outline' | 'secondary' | 'success' | 'warning' | 'destructive'> = {
   pending: 'warning',
   processing: 'secondary',
   shipped: 'secondary',
@@ -61,7 +64,27 @@ const statusBadgeVariant: Record<Order['status'], 'outline' | 'secondary' | 'suc
   cancelled: 'destructive',
 }
 
-const statusLabel = (status: Order['status']) => status.charAt(0).toUpperCase() + status.slice(1)
+const statusLabel = (status: OrderStatus) => status.charAt(0).toUpperCase() + status.slice(1)
+
+const normalizeOrderStatus = (status?: string): OrderStatus => {
+  const value = (status || 'pending').toLowerCase()
+  if (value === 'completed') return 'delivered'
+  if (value === 'processing') return 'processing'
+  if (value === 'shipped') return 'shipped'
+  if (value === 'delivered') return 'delivered'
+  if (value === 'cancelled') return 'cancelled'
+  return 'pending'
+}
+
+const formatPrice = (price: number, currency?: string | null) => {
+  const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
+  return new Intl.NumberFormat('en-KE', {
+    style: hasCurrency ? 'currency' : 'decimal',
+    currency: hasCurrency ? currency : undefined,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(price)
+}
 
 const normalizeSection = (raw: string | undefined): ProfileSection => {
   const s = (raw || 'overview').trim().toLowerCase()
@@ -73,77 +96,33 @@ const normalizeSection = (raw: string | undefined): ProfileSection => {
   return 'overview'
 }
 
-const mockOrders: Order[] = [
-  {
-    id: '1',
-    orderNumber: 'QT-2024-001',
-    date: '2024-01-15',
-    status: 'delivered',
-    items: [],
-    shippingAddress: {
-      firstName: 'Felix',
-      lastName: 'Customer',
-      address1: 'Kimathi Street',
-      city: 'Nairobi',
-      state: 'Nairobi',
-      postalCode: '00100',
-      country: 'Kenya',
-      phone: '+254 712 345 678',
-      isDefault: true,
-    },
-    billingAddress: {
-      firstName: 'Felix',
-      lastName: 'Customer',
-      address1: 'Kimathi Street',
-      city: 'Nairobi',
-      state: 'Nairobi',
-      postalCode: '00100',
-      country: 'Kenya',
-      phone: '+254 712 345 678',
-    },
-    shippingMethod: { id: 'express', name: 'Express', description: 'Same-day Nairobi', price: 0, estimatedDays: '0-1' },
-    paymentMethod: { id: 'mpesa', type: 'card', label: 'M-Pesa • Paid' },
-    subtotal: 119999,
-    tax: 19200,
-    shipping: 0,
-    discount: 0,
-    total: 139199,
-  },
-  {
-    id: '2',
-    orderNumber: 'QT-2024-002',
-    date: '2024-01-20',
-    status: 'shipped',
-    items: [],
-    shippingAddress: {
-      firstName: 'Felix',
-      lastName: 'Customer',
-      address1: 'Brookside Grove',
-      city: 'Nairobi',
-      state: 'Nairobi',
-      postalCode: '00100',
-      country: 'Kenya',
-      phone: '+254 712 345 678',
-    },
-    billingAddress: {
-      firstName: 'Felix',
-      lastName: 'Customer',
-      address1: 'Brookside Grove',
-      city: 'Nairobi',
-      state: 'Nairobi',
-      postalCode: '00100',
-      country: 'Kenya',
-      phone: '+254 712 345 678',
-    },
-    shippingMethod: { id: 'standard', name: 'Standard', description: 'Nationwide shipping', price: 500, estimatedDays: '2-4' },
-    paymentMethod: { id: 'card', type: 'card', label: 'Card • Authorized' },
-    subtotal: 34999,
-    tax: 5600,
-    shipping: 500,
-    discount: 0,
-    total: 41099,
-  },
-]
+const allTogglesOff = <T extends Record<string, any>>(value: T): T => {
+  const walk = (input: any): any => {
+    if (Array.isArray(input)) return input.map(walk)
+    if (input && typeof input === 'object') {
+      return Object.fromEntries(
+        Object.entries(input).map(([key, val]) => {
+          if (typeof val === 'boolean') return [key, false]
+          return [key, walk(val)]
+        })
+      )
+    }
+    return input
+  }
+
+  return walk(value) as T
+}
+
+const mapToProfileOrder = (order: CustomerOrderSummary) => ({
+  id: order.id,
+  orderNumber: order.orderNumber,
+  date: order.placedAt || order.createdAt || new Date().toISOString(),
+  status: normalizeOrderStatus(order.status),
+  total: order.total,
+  currencyCode: order.currencyCode,
+})
+
+type ProfileOrder = ReturnType<typeof mapToProfileOrder>
 
 type StoredAddresses = { items: Address[] }
 
@@ -182,111 +161,34 @@ function useAddresses() {
       return { items: current.map((a) => ({ ...a, isDefault: a.id === id })) }
     })
   }
-
   return { items, add, update, remove, setDefault }
 }
 
-const allTogglesOff = (base: UserProfilePreferences): UserProfilePreferences => ({
-  ...base,
-  notifications: {
-    sms: { enabled: false, orderUpdates: false, promotions: false, securityAlerts: false },
-    email: { enabled: false, orderUpdates: false, promotions: false, securityAlerts: false, newsletters: false },
-  },
-  newsletters: { enabled: false, frequency: 'never' },
-  ui: { reduceMotion: false, highContrast: false },
-  privacy: { showEmail: false, showPhone: false, showProfileImage: false },
-})
-
-const normalizeProfilePreferences = (raw: unknown): UserProfilePreferences => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return allTogglesOff(DEFAULT_PROFILE_PREFERENCES)
-  }
-
-  const r = raw as any
-  const d = DEFAULT_PROFILE_PREFERENCES
-
-  const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback)
-  const asThemeMode = (v: unknown, fallback: ThemeMode): ThemeMode => (v === 'system' || v === 'light' || v === 'dark' ? v : fallback)
-  const asNewsletterFrequency = (v: unknown, fallback: NewsletterFrequency): NewsletterFrequency =>
-    v === 'daily' || v === 'weekly' || v === 'monthly' || v === 'never' ? v : fallback
-  const str = (v: unknown, fallback: string) => (typeof v === 'string' ? v : fallback)
-
-  return {
-    notifications: {
-      sms: {
-        enabled: bool(r?.notifications?.sms?.enabled, d.notifications.sms.enabled),
-        orderUpdates: bool(r?.notifications?.sms?.orderUpdates, d.notifications.sms.orderUpdates),
-        promotions: bool(r?.notifications?.sms?.promotions, d.notifications.sms.promotions),
-        securityAlerts: bool(r?.notifications?.sms?.securityAlerts, d.notifications.sms.securityAlerts),
-      },
-      email: {
-        enabled: bool(r?.notifications?.email?.enabled, d.notifications.email.enabled),
-        orderUpdates: bool(r?.notifications?.email?.orderUpdates, d.notifications.email.orderUpdates),
-        promotions: bool(r?.notifications?.email?.promotions, d.notifications.email.promotions),
-        securityAlerts: bool(r?.notifications?.email?.securityAlerts, d.notifications.email.securityAlerts),
-        newsletters: bool(r?.notifications?.email?.newsletters, d.notifications.email.newsletters),
-      },
-    },
-    newsletters: {
-      enabled: bool(r?.newsletters?.enabled, d.newsletters.enabled),
-      frequency: asNewsletterFrequency(r?.newsletters?.frequency, d.newsletters.frequency),
-    },
-    theme: {
-      mode: asThemeMode(r?.theme?.mode, d.theme.mode),
-    },
-    locale: {
-      language: str(r?.locale?.language, d.locale.language),
-      currency: str(r?.locale?.currency, d.locale.currency),
-      timezone: typeof r?.locale?.timezone === 'string' ? r.locale.timezone : d.locale.timezone,
-    },
-    ui: {
-      reduceMotion: bool(r?.ui?.reduceMotion, d.ui.reduceMotion),
-      highContrast: bool(r?.ui?.highContrast, d.ui.highContrast),
-    },
-    privacy: {
-      showEmail: bool(r?.privacy?.showEmail, d.privacy.showEmail),
-      showPhone: bool(r?.privacy?.showPhone, d.privacy.showPhone),
-      showProfileImage: bool(r?.privacy?.showProfileImage, d.privacy.showProfileImage),
-    },
-  }
-}
-
-function formatPrice(price: number, currency?: string | null) {
-  const hasCurrency = typeof currency === 'string' && currency.trim().length > 0
-  return new Intl.NumberFormat('en-KE', {
-    style: hasCurrency ? 'currency' : 'decimal',
-    currency: hasCurrency ? currency : undefined,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(price)
-}
-
 export function ProfilePage() {
-  const [path, setLocation] = useLocation()
+  const [, setLocation] = useLocation()
   const [, params] = useRoute('/profile/:tab?')
   const rawSection = params?.tab
   const section = normalizeSection(rawSection)
 
-  const { user, isAuthenticated, isReady, logout, getProfile, updateProfile } = useAuth()
+  const { user, isAuthenticated, logout, getProfile, updateProfile, accessToken } = useAuth()
   const { setTheme } = useTheme()
   const { addToCart } = useCart()
   const wishlist = useWishlist()
   const addresses = useAddresses()
 
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false)
+  const {
+    orders: customerOrders,
+    isLoading: isLoadingOrders,
+    error: ordersError,
+  } = useCustomerOrders({ token: accessToken, enabled: isAuthenticated })
+
+  const profileOrders = useMemo(() => customerOrders.map(mapToProfileOrder), [customerOrders])
+
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
   const [isSavingPreferences, setIsSavingPreferences] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
   const [hasLoadedRemoteProfile, setHasLoadedRemoteProfile] = useState(false)
-  const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
-  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false)
-
-  useEffect(() => {
-    if (!isReady) return
-    if (isAuthenticated) return
-    setLocation(`/login?redirect=${encodeURIComponent(path)}`)
-  }, [isAuthenticated, isReady, path, setLocation])
-
   useEffect(() => {
     if (!rawSection) return
     if (rawSection === 'overview') {
@@ -384,10 +286,6 @@ export function ProfilePage() {
     }
   }
 
-  const handleViewOrder = (order: Order) => {
-    setSelectedOrder(order)
-    setIsOrderModalOpen(true)
-  }
 
   const handleSaveProfile = async () => {
     try {
@@ -509,14 +407,21 @@ export function ProfilePage() {
 
             {section === 'overview' && (
               <OverviewPanel
-                orders={mockOrders}
+                orders={profileOrders}
                 wishlistCount={wishlist.items.length}
                 addressCount={addresses.items.length}
-                onViewOrder={handleViewOrder}
+                isLoading={isLoadingOrders}
+                error={ordersError}
               />
             )}
 
-            {section === 'orders' && <OrdersPanel orders={mockOrders} onViewOrder={handleViewOrder} />}
+            {section === 'orders' && (
+              <OrdersPanel
+                orders={profileOrders}
+                isLoading={isLoadingOrders}
+                error={ordersError}
+              />
+            )}
 
             {section === 'addresses' && <AddressesPanel store={addresses} />}
 
@@ -544,9 +449,6 @@ export function ProfilePage() {
           </section>
         </div>
       </div>
-
-      <OrderDetailModal order={selectedOrder} isOpen={isOrderModalOpen} onClose={() => setIsOrderModalOpen(false)} />
-
       <Dialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
@@ -619,12 +521,14 @@ function OverviewPanel({
   orders,
   wishlistCount,
   addressCount,
-  onViewOrder,
+  isLoading,
+  error,
 }: {
-  orders: Order[]
+  orders: ProfileOrder[]
   wishlistCount: number
   addressCount: number
-  onViewOrder: (order: Order) => void
+  isLoading: boolean
+  error: string | null
 }) {
   return (
     <div className="space-y-6">
@@ -673,39 +577,61 @@ function OverviewPanel({
           <CardDescription>Quickly jump back into tracking.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {orders.slice(0, 3).map((order) => (
-            <div key={order.id} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className="font-semibold">{order.orderNumber}</div>
-                  <Badge variant={statusBadgeVariant[order.status]} className="capitalize">
-                    {statusLabel(order.status)}
-                  </Badge>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {new Date(order.date).toLocaleDateString('en-KE', { year: 'numeric', month: 'short', day: 'numeric' })} •{' '}
-                  {formatPrice(order.total, order.items?.[0]?.product?.currency)}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" onClick={() => onViewOrder(order)}>
-                  View details
-                </Button>
-                <Button asChild variant="ghost">
-                  <Link href={`/track-order?order=${encodeURIComponent(order.orderNumber)}`}>Track</Link>
-                </Button>
-              </div>
+          {isLoading ? (
+            <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">
+              Loading orders...
             </div>
-          ))}
+          ) : error ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-center text-sm text-destructive">
+              {error}
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">
+              No recent orders yet.
+            </div>
+          ) : (
+            orders.slice(0, 3).map((order) => (
+              <div key={order.id} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold">{order.orderNumber}</div>
+                    <Badge variant={statusBadgeVariant[order.status]} className="capitalize">
+                      {statusLabel(order.status)}
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    {new Date(order.date).toLocaleDateString('en-KE', { year: 'numeric', month: 'short', day: 'numeric' })} •{' '}
+                    {formatPrice(order.total, order.currencyCode)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button asChild variant="secondary">
+                    <Link href={`/orders/${order.id}`}>View details</Link>
+                  </Button>
+                  <Button asChild variant="ghost">
+                    <Link href={`/track-order?order=${encodeURIComponent(order.orderNumber)}`}>Track</Link>
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>
   )
 }
 
-function OrdersPanel({ orders, onViewOrder }: { orders: Order[]; onViewOrder: (order: Order) => void }) {
+function OrdersPanel({
+  orders,
+  isLoading,
+  error,
+}: {
+  orders: ProfileOrder[]
+  isLoading: boolean
+  error: string | null
+}) {
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState<'all' | Order['status']>('all')
+  const [status, setStatus] = useState<'all' | OrderStatus>('all')
   const [dateRange, setDateRange] = useState<'all' | '30d' | '3m' | '6m' | '1y'>('all')
   const [sort, setSort] = useState<'newest' | 'oldest' | 'total-desc' | 'total-asc'>('newest')
 
@@ -792,7 +718,15 @@ function OrdersPanel({ orders, onViewOrder }: { orders: Order[]; onViewOrder: (o
         </div>
 
         <div className="space-y-3">
-          {filtered.length === 0 ? (
+          {isLoading ? (
+            <div className="rounded-xl border p-10 text-center">
+              <div className="text-sm font-semibold">Loading orders...</div>
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-10 text-center">
+              <div className="text-sm font-semibold text-destructive">{error}</div>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="rounded-xl border p-10 text-center">
               <div className="text-sm font-semibold">No orders found</div>
               <div className="text-sm text-muted-foreground mt-1">Try adjusting filters or searching by order number.</div>
@@ -810,12 +744,12 @@ function OrdersPanel({ orders, onViewOrder }: { orders: Order[]; onViewOrder: (o
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">
                       {new Date(order.date).toLocaleDateString('en-KE', { year: 'numeric', month: 'short', day: 'numeric' })} •{' '}
-                      {formatPrice(order.total, order.items?.[0]?.product?.currency)}
+                      {formatPrice(order.total, order.currencyCode)}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="secondary" onClick={() => onViewOrder(order)}>
-                      View details
+                    <Button asChild variant="secondary">
+                      <Link href={`/orders/${order.id}`}>View details</Link>
                     </Button>
                     <Button asChild variant="ghost">
                       <Link href={`/track-order?order=${encodeURIComponent(order.orderNumber)}`}>Track</Link>

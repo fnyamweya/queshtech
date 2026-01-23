@@ -33,6 +33,9 @@ import {
   OrderPricingSnapshotController,
 } from './pricing-runtime.controller';
 
+// Seeder
+import { PricebookSeeder } from './seeders/pricebook.seeder';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -69,6 +72,8 @@ import {
     PricebookRoutingService,
     PricingSnapshotService,
     PricebookAssignmentService,
+    // Seeder
+    PricebookSeeder,
   ],
   exports: [
     PricingService,
@@ -76,6 +81,7 @@ import {
     PricebookRoutingService,
     PricingSnapshotService,
     PricebookAssignmentService,
+    PricebookSeeder,
   ],
 })
 export class PricingModule {}

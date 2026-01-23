@@ -6,8 +6,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * Single-tenant (SYSTEM_TENANT_ID placeholder) for now, multi-tenant ready.
  */
-export class CreatePricebookModule20260122 implements MigrationInterface {
-  name = 'CreatePricebookModule20260122';
+export class CreatePricebookModule202601221769040000000 implements MigrationInterface {
+  name = 'CreatePricebookModule202601221769040000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // 1. Create pricebook table

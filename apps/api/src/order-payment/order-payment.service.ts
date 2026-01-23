@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Order } from '../order/entities/order.entity';
 import { OrderItem } from '../order/entities/order-item.entity';
+import { OrderPricingSnapshot } from '../pricing/entities/order-pricing-snapshot.entity';
 import { OrderPayment } from './entities/order-payment.entity';
 import { PaymentAllocation } from './entities/payment-allocation.entity';
 import { AccountingService } from '../accounting/accounting.service';
@@ -136,6 +138,7 @@ export class OrderPaymentService {
       const paymentRepository = manager.getRepository(OrderPayment);
       const allocationRepository = manager.getRepository(PaymentAllocation);
       const orderItemRepository = manager.getRepository(OrderItem);
+      const snapshotRepository = manager.getRepository(OrderPricingSnapshot);
 
       const order = await orderRepository
         .createQueryBuilder('o')
@@ -144,6 +147,22 @@ export class OrderPaymentService {
         .getOne();
 
       if (!order) throw new NotFoundException('Order not found');
+
+      // Guard: CAPTURE payments require a locked pricing snapshot.
+      if (payload.type === OrderPaymentType.CAPTURE) {
+        const snapshot = await snapshotRepository.findOne({
+          where: { orderId: order.id },
+          select: ['id', 'lockedAt'] as any,
+        });
+
+        if (!snapshot?.lockedAt) {
+          throw new ConflictException({
+            code: 'QUOTE_NOT_LOCKED',
+            message:
+              "Cannot capture payment until the order's pricing has been locked",
+          });
+        }
+      }
 
       if (normalizeCode(order.currencyCode) !== currency) {
         throw new BadRequestException(
@@ -266,6 +285,44 @@ export class OrderPaymentService {
               ? new Date(payload.initiatedAt)
               : new Date(),
         });
+
+        // Order status transitions (P1): for successful CAPTURE payments.
+        if (payload.type === OrderPaymentType.CAPTURE) {
+          const rows = await allocationRepository
+            .createQueryBuilder('a')
+            .innerJoin('a.payment', 'p')
+            .select('p.type', 'type')
+            .addSelect('SUM(a.amount)', 'amount')
+            .where('a.order_id = :orderId', { orderId: order.id })
+            .andWhere('p.status = :status', {
+              status: OrderPaymentStatus.SUCCEEDED,
+            })
+            .groupBy('p.type')
+            .getRawMany<{ type: OrderPaymentType; amount: string }>();
+
+          const byType = new Map<OrderPaymentType, number>();
+          for (const r of rows) byType.set(r.type, Number(r.amount ?? 0));
+
+          const capturedTotal = byType.get(OrderPaymentType.CAPTURE) ?? 0;
+          const adjustedTotal = byType.get(OrderPaymentType.ADJUSTMENT) ?? 0;
+          const reversedTotal = byType.get(OrderPaymentType.REVERSAL) ?? 0;
+          const refundedTotal = byType.get(OrderPaymentType.REFUND) ?? 0;
+          const netPaidTotal =
+            capturedTotal + adjustedTotal - reversedTotal - refundedTotal;
+          const grandTotal = Number(order.grandTotal ?? 0);
+
+          if (netPaidTotal >= grandTotal) {
+            order.financialStatus = 'paid' as any;
+            if (String(order.status) === 'ready_for_payment') {
+              order.status = 'confirmed' as any;
+              order.confirmedAt = order.confirmedAt ?? new Date();
+            }
+          } else if (netPaidTotal > 0) {
+            order.financialStatus = 'partially_paid' as any;
+          }
+
+          await orderRepository.save(order);
+        }
       }
 
       return paymentRepository.findOneOrFail({

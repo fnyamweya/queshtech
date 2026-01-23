@@ -10,7 +10,13 @@ export class UpsertAddressFieldConfigDto {
         summary: 'Kenya (typical structure)',
         value: {
           version: 1,
-          locationChain: ['country', 'county', 'sub_county', 'ward', 'town'],
+          locationChain: [
+            { type: 'country', display: 'Country' },
+            { type: 'county', display: 'County' },
+            { type: 'sub_county', display: 'Sub-County' },
+            { type: 'ward', display: 'Ward' },
+            { type: 'town', display: 'Town' },
+          ],
           fields: [
             { key: 'firstName', type: 'text', required: true },
             { key: 'lastName', type: 'text', required: true },
@@ -26,12 +32,12 @@ export class UpsertAddressFieldConfigDto {
         value: {
           version: 1,
           locationChain: [
-            'country',
-            'district',
-            'county',
-            'subcounty',
-            'parish',
-            'village',
+            { type: 'country', display: 'Country' },
+            { type: 'district', display: 'District' },
+            { type: 'county', display: 'County' },
+            { type: 'subcounty', display: 'Sub-County' },
+            { type: 'parish', display: 'Parish' },
+            { type: 'village', display: 'Village' },
           ],
           fields: [
             { key: 'firstName', type: 'text', required: true },

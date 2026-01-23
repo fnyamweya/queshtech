@@ -31,6 +31,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         details = (exceptionResponse as any).details || null;
 
+        // Preserve machine-readable error codes if provided.
+        // Many services throw: new ConflictException({ code, message, details? })
+        // so we surface `code` under the ResponseUtil.error `details` object.
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        const code = (exceptionResponse as any).code;
+        if (code) {
+          if (details && typeof details === 'object' && !Array.isArray(details)) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            details = { code, ...(details as any) };
+          } else {
+            details = { code };
+          }
+        }
+
         // Handle validation errors
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         if (Array.isArray((exceptionResponse as any).message)) {

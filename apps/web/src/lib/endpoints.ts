@@ -272,6 +272,17 @@ export const endpoints = {
   },
   customer: {
     shippingAddress: p('/customer/shipping-address'),
+    orders: {
+      list: (params?: { page?: number; limit?: number }) => {
+        if (!params) return p('/customer/orders')
+        const qs = new URLSearchParams()
+        if (typeof params.page === 'number') qs.set('page', String(params.page))
+        if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
+        const query = qs.toString()
+        return query ? p(`/customer/orders?${query}`) : p('/customer/orders')
+      },
+      byId: (id: string) => p(`/customer/orders/${encodeURIComponent(id)}`),
+    },
   },
   checkout: {
     sessions: p('/checkout/sessions'),
@@ -283,6 +294,14 @@ export const endpoints = {
     confirm: (id: string) => p(`/checkout/sessions/${encodeURIComponent(id)}/confirm`),
   },
   orders: {
+    list: (params?: { page?: number; limit?: number }) => {
+      if (!params) return p('/orders')
+      const qs = new URLSearchParams()
+      if (typeof params.page === 'number') qs.set('page', String(params.page))
+      if (typeof params.limit === 'number') qs.set('limit', String(params.limit))
+      const query = qs.toString()
+      return query ? p(`/orders?${query}`) : p('/orders')
+    },
     base: p('/orders'),
     byId: (id: string) => p(`/orders/${encodeURIComponent(id)}`),
     shippingQuote: (id: string) => p(`/orders/${encodeURIComponent(id)}/shipping/quote`),
@@ -290,6 +309,16 @@ export const endpoints = {
       p(`/orders/${encodeURIComponent(id)}/invoice/summary?token=${encodeURIComponent(token)}`),
     invoicePdf: (id: string, token: string) =>
       p(`/orders/${encodeURIComponent(id)}/invoice.pdf?token=${encodeURIComponent(token)}`),
+    // Pricing lifecycle endpoints
+    reprice: (id: string) => p(`/orders/${encodeURIComponent(id)}/reprice`),
+    lockPricing: (id: string) => p(`/orders/${encodeURIComponent(id)}/lock-pricing`),
+    pricing: (id: string) => p(`/orders/${encodeURIComponent(id)}/pricing`),
+    pricingAdjustments: (id: string) => p(`/orders/${encodeURIComponent(id)}/pricing-adjustments`),
+    batches: (id: string) => p(`/orders/${encodeURIComponent(id)}/batches`),
+    resolveBatches: (id: string) => p(`/orders/${encodeURIComponent(id)}/batches/resolve`),
+    // Payments endpoints
+    payments: (id: string) => p(`/orders/${encodeURIComponent(id)}/payments`),
+    paymentsSummary: (id: string) => p(`/orders/${encodeURIComponent(id)}/payments/summary`),
   },
   paymentMethods: {
     base: p('/payment-methods'),

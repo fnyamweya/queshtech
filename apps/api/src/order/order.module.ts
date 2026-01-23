@@ -8,10 +8,10 @@ import { Order } from './entities/order.entity';
 import { ShippingModule } from '../shipping/shipping.module';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderLevelCharge } from './entities/order-level-charge.entity';
-import { OrderItemCharge } from './entities/order-item-charge.entity';
 import { OrderShippingAddress } from './entities/order-shipping-address.entity';
 import { OrderService } from './services/order.service';
 import { OrderController } from './controllers/order.controller';
+import { CustomerOrdersController } from './controllers/customer-orders.controller';
 import { User } from '../user/entities/user.entity';
 import { Location } from '../location/entities/location.entity';
 import { CurrencyModule } from '../currency/currency.module';
@@ -20,6 +20,17 @@ import { SmsModule } from '../sms/sms.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { OrderNotificationService } from './services/order-notification.service';
 import { OrderPaymentModule } from '../order-payment/order-payment.module';
+import { PricingModule } from '../pricing/pricing.module';
+import { OrderPricingPipelineService } from './services/order-pricing-pipeline.service';
+import {
+  ChargeAllocation,
+  ChargeComponent,
+  PricingAppliedRule,
+  PricingRun,
+} from '../pricing/entities';
+import { Batch, BatchItem } from './batches/entities';
+import { ProductSku } from '../catalog/entities/product-sku.entity';
+import { AddressModule } from '../address/address.module';
 
 @Module({
   imports: [
@@ -27,13 +38,20 @@ import { OrderPaymentModule } from '../order-payment/order-payment.module';
       Order,
       OrderItem,
       OrderLevelCharge,
-      OrderItemCharge,
       OrderShippingAddress,
+      PricingRun,
+      ChargeComponent,
+      ChargeAllocation,
+      PricingAppliedRule,
+      Batch,
+      BatchItem,
       User,
       Location,
+      ProductSku,
     ]),
     CatalogModule,
     PromotionModule,
+    PricingModule,
     // need settings for shipping & tax
     SettingModule,
     // Shipping module provides the shipping matrix
@@ -41,11 +59,12 @@ import { OrderPaymentModule } from '../order-payment/order-payment.module';
     CurrencyModule,
     CustomerShippingAddressModule,
     OrderPaymentModule,
+    AddressModule,
     SmsModule,
     WhatsappModule,
   ],
-  controllers: [OrderController],
-  providers: [OrderService, TaxService, OrderNotificationService],
-  exports: [TypeOrmModule, OrderService],
+  controllers: [OrderController, CustomerOrdersController],
+  providers: [OrderService, TaxService, OrderNotificationService, OrderPricingPipelineService],
+  exports: [TypeOrmModule, OrderService, OrderPricingPipelineService],
 })
 export class OrderModule {}

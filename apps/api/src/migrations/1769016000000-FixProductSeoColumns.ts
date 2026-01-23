@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class FixProductSeoColumns20260121172000 implements MigrationInterface {
-  name = 'FixProductSeoColumns20260121172000';
+export class FixProductSeoColumns1769016000000 implements MigrationInterface {
+  name = 'FixProductSeoColumns1769016000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
